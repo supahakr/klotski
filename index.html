@@ -790,9 +790,9 @@
             <div id="consoleOutput"></div>
         </div>
 
-        <div id="loading" class="panel">
+        <div id="loading" class="panel hidden">
             <div class="spinner"></div>
-            <div>Generating state-space graph...</div>
+            <div id="loadingMessage">Generating state-space graph...</div>
             <div id="loadingProgress" style="margin-top: 10px; font-size: 14px;"></div>
         </div>
     </div>
@@ -849,7 +849,9 @@
         function generateGraph() {
             const layoutType = 'force';  // Always use force-directed layout
             const loadingElement = document.getElementById('loading');
+            const loadingMessage = document.getElementById('loadingMessage');
             
+            loadingMessage.textContent = 'Generating state-space graph...';
             loadingElement.classList.remove('hidden');
             
             // Use setTimeout to allow UI to update
@@ -1635,10 +1637,18 @@
 
         // Load saved graph on startup
         async function loadSavedGraph() {
+            const loadingElement = document.getElementById('loading');
+            const loadingMessage = document.getElementById('loadingMessage');
+            
             try {
+                // Show loading with appropriate message
+                loadingMessage.textContent = 'Loading saved graph...';
+                loadingElement.classList.remove('hidden');
+                
                 const response = await fetch('klotski_graph_layout.json');
                 if (!response.ok) {
                     console.log('No saved graph found, opening editor');
+                    loadingElement.classList.add('hidden');
                     openEditor();
                     return;
                 }
@@ -1707,9 +1717,13 @@
                 console.log(`  States: ${currentGraph.stateList.length}`);
                 console.log(`  Edges: ${currentGraph.edges.length}`);
                 
+                // Hide loading indicator
+                loadingElement.classList.add('hidden');
+                
             } catch (error) {
                 console.error('Error loading saved graph:', error);
                 console.log('Opening editor instead');
+                loadingElement.classList.add('hidden');
                 openEditor();
             }
         }
