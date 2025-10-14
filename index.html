@@ -1,0 +1,1725 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Klotski State-Space Graph Visualization</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow: hidden;
+            background: #0a0a0a;
+            color: #ffffff;
+        }
+
+        #container {
+            width: 100vw;
+            height: 100vh;
+        }
+
+        #ui {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            pointer-events: none;
+        }
+
+        .panel {
+            pointer-events: auto;
+            background: rgba(20, 20, 30, 0.9);
+            border: 1px solid rgba(100, 100, 150, 0.3);
+            border-radius: 8px;
+            padding: 15px;
+            margin: 15px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+            backdrop-filter: blur(10px);
+        }
+
+        #header {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            text-align: center;
+            padding: 20px;
+            background: linear-gradient(to bottom, rgba(20, 20, 30, 0.95), rgba(20, 20, 30, 0));
+        }
+
+        #header h1 {
+            font-size: 28px;
+            font-weight: 300;
+            letter-spacing: 2px;
+            color: #4488ff;
+            text-shadow: 0 0 10px rgba(68, 136, 255, 0.5);
+        }
+
+        #controls {
+            position: absolute;
+            top: 80px;
+            left: 0;
+            width: 280px;
+            max-height: calc(100vh - 100px);
+            overflow-y: auto;
+            overflow-x: hidden;
+        }
+
+        /* Custom scrollbar for controls */
+        #controls::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        #controls::-webkit-scrollbar-track {
+            background: rgba(20, 20, 30, 0.5);
+            border-radius: 4px;
+        }
+
+        #controls::-webkit-scrollbar-thumb {
+            background: rgba(68, 136, 255, 0.5);
+            border-radius: 4px;
+        }
+
+        #controls::-webkit-scrollbar-thumb:hover {
+            background: rgba(68, 136, 255, 0.7);
+        }
+
+        #stats {
+            position: absolute;
+            top: 80px;
+            right: 0;
+            width: 250px;
+            max-height: calc(100vh - 100px);
+            overflow-y: auto;
+            overflow-x: hidden;
+        }
+
+        /* Custom scrollbar for stats */
+        #stats::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        #stats::-webkit-scrollbar-track {
+            background: rgba(20, 20, 30, 0.5);
+            border-radius: 4px;
+        }
+
+        #stats::-webkit-scrollbar-thumb {
+            background: rgba(68, 136, 255, 0.5);
+            border-radius: 4px;
+        }
+
+        #stats::-webkit-scrollbar-thumb:hover {
+            background: rgba(68, 136, 255, 0.7);
+        }
+
+        #stateInfo {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 300px;
+        }
+
+        #loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            font-size: 20px;
+            pointer-events: none;
+        }
+
+        #loading.hidden {
+            display: none;
+        }
+
+        .spinner {
+            border: 4px solid rgba(68, 136, 255, 0.2);
+            border-top: 4px solid #4488ff;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+            margin: 20px auto;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        button {
+            background: linear-gradient(135deg, #4488ff, #2255cc);
+            border: none;
+            color: white;
+            padding: 10px 20px;
+            margin: 5px 0;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            width: 100%;
+            transition: all 0.3s ease;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+        }
+
+        button:hover {
+            background: linear-gradient(135deg, #5599ff, #3366dd);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.4);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        button.compact {
+            padding: 6px 12px;
+            font-size: 12px;
+            margin: 3px 0;
+        }
+
+        select {
+            background: rgba(40, 40, 60, 0.8);
+            border: 1px solid rgba(100, 100, 150, 0.3);
+            color: white;
+            padding: 8px;
+            margin: 5px 0;
+            border-radius: 5px;
+            width: 100%;
+            font-size: 14px;
+        }
+
+        .info-text {
+            font-size: 14px;
+            line-height: 1.6;
+            color: #cccccc;
+        }
+
+        .legend {
+            margin-top: 15px;
+            font-size: 12px;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            margin: 8px 0;
+        }
+
+        .legend-color {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            margin-right: 10px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+        }
+
+        #console {
+            position: absolute;
+            bottom: 220px;
+            right: 0;
+            width: 350px;
+            max-height: 150px;
+            overflow-y: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 11px;
+            line-height: 1.4;
+        }
+
+        #boardState {
+            min-width: 200px;
+            max-width: 220px;
+            cursor: pointer;
+        }
+        
+        #boardState:hover {
+            border-color: rgba(68, 136, 255, 0.6);
+        }
+        
+        #boardState.hidden {
+            display: none;
+        }
+
+        .console-line {
+            padding: 2px 5px;
+            border-bottom: 1px solid rgba(100, 100, 150, 0.1);
+        }
+
+        hr {
+            border: none;
+            border-top: 1px solid rgba(100, 100, 150, 0.3);
+            margin: 10px 0;
+        }
+
+        .slider-container {
+            margin: 8px 0;
+        }
+
+        .slider-label {
+            display: flex;
+            justify-content: space-between;
+            font-size: 12px;
+            margin-bottom: 4px;
+            color: #aaaaaa;
+        }
+
+        .slider-value {
+            color: #4488ff;
+            font-weight: bold;
+        }
+
+        input[type="range"] {
+            width: 100%;
+            height: 6px;
+            border-radius: 3px;
+            background: rgba(40, 40, 60, 0.8);
+            outline: none;
+            -webkit-appearance: none;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #4488ff, #2255cc);
+            cursor: pointer;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+        }
+
+        input[type="range"]::-moz-range-thumb {
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #4488ff, #2255cc);
+            cursor: pointer;
+            border: none;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+        }
+
+        input[type="range"]::-webkit-slider-thumb:hover {
+            background: linear-gradient(135deg, #5599ff, #3366dd);
+            transform: scale(1.1);
+        }
+
+        input[type="range"]::-moz-range-thumb:hover {
+            background: linear-gradient(135deg, #5599ff, #3366dd);
+            transform: scale(1.1);
+        }
+
+        .collapsible {
+            cursor: pointer;
+            user-select: none;
+            padding: 8px;
+            margin: 5px -15px;
+            background: rgba(68, 136, 255, 0.1);
+            border-radius: 4px;
+            transition: background 0.2s;
+        }
+
+        .collapsible:hover {
+            background: rgba(68, 136, 255, 0.2);
+        }
+
+        .collapsible::before {
+            content: '▼ ';
+            font-size: 10px;
+            margin-right: 5px;
+        }
+
+        .collapsible.collapsed::before {
+            content: '▶ ';
+        }
+
+        .collapsible-content {
+            max-height: 1500px;
+            overflow: visible;
+            transition: max-height 0.3s ease;
+        }
+
+        .collapsible-content.hidden {
+            max-height: 0;
+            overflow: hidden;
+        }
+
+        /* Board Editor */
+        #boardEditor {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.9);
+            z-index: 1000;
+            display: none;
+            justify-content: center;
+            align-items: center;
+        }
+
+        #boardEditor.active {
+            display: flex;
+        }
+
+        .editor-container {
+            background: #1a1a2e;
+            border: 2px solid #4488ff;
+            border-radius: 10px;
+            padding: 30px;
+            max-width: 90vw;
+            max-height: 90vh;
+            overflow: auto;
+        }
+
+        .editor-title {
+            font-size: 24px;
+            color: #4488ff;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        .editor-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 60px);
+            grid-template-rows: repeat(5, 60px);
+            gap: 2px;
+            background: #0f0f1e;
+            padding: 10px;
+            border-radius: 5px;
+            margin: 20px auto;
+            width: fit-content;
+            position: relative;
+        }
+
+        .grid-cell {
+            width: 60px;
+            height: 60px;
+            background: #2a2a3e;
+            border: 1px solid #3a3a4e;
+            border-radius: 3px;
+        }
+
+        .grid-cell.occupied {
+            background: #4a4a5e;
+        }
+
+        .block-piece {
+            position: absolute;
+            border-radius: 4px;
+            cursor: grab;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            font-weight: bold;
+            color: white;
+            text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+            border: 2px solid rgba(0,0,0,0.3);
+            user-select: none;
+            touch-action: none;
+        }
+
+        .block-piece:active {
+            cursor: grabbing;
+        }
+
+        .block-piece.dragging {
+            opacity: 0.7;
+            z-index: 100;
+            box-shadow: 0 8px 16px rgba(0, 0, 0, 0.5);
+        }
+
+        .piece-palette {
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+            margin: 20px 0;
+            flex-wrap: wrap;
+        }
+
+        .palette-piece {
+            padding: 10px 15px;
+            background: linear-gradient(135deg, #4488ff, #2255cc);
+            border: none;
+            border-radius: 5px;
+            color: white;
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.2s;
+        }
+
+        .palette-piece:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(68, 136, 255, 0.5);
+        }
+
+        .visual-piece {
+            cursor: pointer;
+            border: 2px solid rgba(0, 0, 0, 0.3);
+            border-radius: 4px;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            font-weight: bold;
+            color: white;
+            text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+        }
+
+        .visual-piece:hover {
+            transform: scale(1.1);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+            filter: brightness(1.2);
+        }
+
+        .big-piece {
+            width: 60px;
+            height: 60px;
+            background: #ff4444;
+        }
+
+        .vertical-piece {
+            width: 30px;
+            height: 60px;
+            background: #4488ff;
+        }
+
+        .horizontal-piece {
+            width: 60px;
+            height: 30px;
+            background: #44ff44;
+        }
+
+        .small-piece {
+            width: 30px;
+            height: 30px;
+            background: #ffaa00;
+        }
+
+        .editor-buttons {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            margin-top: 20px;
+        }
+
+        .editor-info {
+            text-align: center;
+            color: #888;
+            font-size: 12px;
+            margin: 15px 0;
+        }
+        
+        .hidden {
+            display: none !important;
+        }
+    </style>
+</head>
+<body>
+    <div id="container"></div>
+    
+    <!-- Board Editor Modal -->
+    <div id="boardEditor">
+        <div class="editor-container">
+            <div class="editor-title">Custom Starting Board</div>
+            <div class="editor-info">
+                Set board size, then add pieces. Drag to reposition. Double-click to remove.
+            </div>
+            
+            <div style="display: flex; gap: 20px; justify-content: center; margin-bottom: 15px; font-size: 12px; flex-wrap: wrap;">
+                <label style="color: #aaa;">
+                    Dimensions: 
+                    <select id="boardDimension" style="margin-left: 5px; padding: 4px; background: #2a2a3e; border: 1px solid #4488ff; color: white; border-radius: 3px;" onchange="toggleDimension()">
+                        <option value="2D">2D</option>
+                        <option value="3D">3D</option>
+                    </select>
+                </label>
+                <label style="color: #aaa;">
+                    Width: 
+                    <input type="number" id="boardWidth" min="2" max="8" value="4" style="width: 50px; margin-left: 5px; padding: 4px; background: #2a2a3e; border: 1px solid #4488ff; color: white; border-radius: 3px;">
+                </label>
+                <label style="color: #aaa;">
+                    Height: 
+                    <input type="number" id="boardHeight" min="2" max="10" value="5" style="width: 50px; margin-left: 5px; padding: 4px; background: #2a2a3e; border: 1px solid #4488ff; color: white; border-radius: 3px;">
+                </label>
+                <label style="color: #aaa;" id="depthLabel" class="hidden">
+                    Depth: 
+                    <input type="number" id="boardDepth" min="2" max="6" value="3" style="width: 50px; margin-left: 5px; padding: 4px; background: #2a2a3e; border: 1px solid #4488ff; color: white; border-radius: 3px;">
+                </label>
+                <button class="palette-piece" onclick="updateBoardSize()" style="padding: 4px 12px; margin: 0;">Apply Size</button>
+            </div>
+            
+            <div class="piece-palette" style="margin-bottom: 20px;">
+                <strong style="display: block; width: 100%; text-align: center; margin-bottom: 10px; color: #aaa;">Add Custom Piece:</strong>
+                <div style="display: flex; gap: 10px; justify-content: center; align-items: center; flex-wrap: wrap; margin-bottom: 15px;">
+                    <label style="color: #aaa; font-size: 12px;">
+                        Width: 
+                        <input type="number" id="pieceWidth" min="1" max="4" value="1" style="width: 40px; padding: 4px; background: #2a2a3e; border: 1px solid #4488ff; color: white; border-radius: 3px;">
+                    </label>
+                    <label style="color: #aaa; font-size: 12px;">
+                        Height: 
+                        <input type="number" id="pieceHeight" min="1" max="5" value="1" style="width: 40px; padding: 4px; background: #2a2a3e; border: 1px solid #4488ff; color: white; border-radius: 3px;">
+                    </label>
+                    <label style="color: #aaa; font-size: 12px;" id="pieceDepthLabel" class="hidden">
+                        Depth: 
+                        <input type="number" id="pieceDepth" min="1" max="4" value="1" style="width: 40px; padding: 4px; background: #2a2a3e; border: 1px solid #4488ff; color: white; border-radius: 3px;">
+                    </label>
+                    <button class="palette-piece" onclick="addCustomPiece()" style="padding: 6px 15px; margin: 0;">Add Piece</button>
+                </div>
+                <strong style="display: block; width: 100%; text-align: center; margin-bottom: 10px; color: #aaa; font-size: 11px;">Quick Add:</strong>
+                <div style="display: flex; gap: 15px; justify-content: center; flex-wrap: wrap;">
+                    <div class="visual-piece big-piece" onclick="addPieceToBoard(2, 2)" title="Big 2×2">★</div>
+                    <div class="visual-piece vertical-piece" onclick="addPieceToBoard(1, 2)" title="Vertical 1×2"></div>
+                    <div class="visual-piece horizontal-piece" onclick="addPieceToBoard(2, 1)" title="Horizontal 2×1"></div>
+                    <div class="visual-piece small-piece" onclick="addPieceToBoard(1, 1)" title="Small 1×1"></div>
+                </div>
+            </div>
+            
+            <div id="layerControls" class="hidden" style="text-align: center; margin: 10px 0; padding: 10px; background: #1a1a2e; border-radius: 5px;">
+                <label style="color: #aaa; margin-right: 10px;">Viewing Layer:</label>
+                <button onclick="changeLayer(-1)" style="padding: 5px 12px; background: #4488ff; border: none; color: white; border-radius: 3px; cursor: pointer; margin: 0 5px;">◀ Back</button>
+                <span id="currentLayer" style="color: white; font-weight: bold; margin: 0 10px;">Layer 0</span>
+                <button onclick="changeLayer(1)" style="padding: 5px 12px; background: #4488ff; border: none; color: white; border-radius: 3px; cursor: pointer; margin: 0 5px;">Front ▶</button>
+                <span style="color: #888; font-size: 11px; margin-left: 15px;">Pieces can move between layers</span>
+            </div>
+            
+            <div class="editor-grid" id="editorGrid"></div>
+            
+            <div class="piece-palette" style="margin-top: 15px;">
+                <button class="palette-piece" onclick="loadPreset('default')">Load Default</button>
+                <button class="palette-piece" onclick="clearBoard()">Clear All</button>
+            </div>
+            
+            <div class="editor-buttons">
+                <button onclick="applyCustomBoard()">Generate Graph from This Board</button>
+                <button onclick="closeEditor()">Cancel</button>
+            </div>
+        </div>
+    </div>
+    
+    <div id="ui">
+        <div id="header">
+            <h1>KLOTSKI STATE-SPACE GRAPH</h1>
+        </div>
+
+        <div id="controls" class="panel">
+            <button id="generateBtn">Generate Graph</button>
+            <button id="editBoardBtn">Edit Starting Board</button>
+            <button id="resetCameraBtn">Reset Camera</button>
+            
+            <hr style="margin: 10px 0;">
+            
+            <div class="info-text">
+                <strong>Graph Export/Import</strong>
+            </div>
+            <button id="exportCudaBtn">Export Graph with Layout</button>
+            <button id="importCudaBtn">Import Graph Layout</button>
+            
+            <div style="margin-top: 10px;">
+                <label style="display: flex; align-items: center; cursor: pointer;">
+                    <input type="checkbox" id="showNodesToggle" style="margin-right: 8px; cursor: pointer;">
+                    <span>Show All Nodes</span>
+                </label>
+            </div>
+            
+            <div class="slider-container" style="margin-top: 10px;">
+                <div class="slider-label">
+                    <span>Symmetry Strength</span>
+                    <span class="slider-value" id="symmetryStrengthValue">0.0</span>
+                </div>
+                <input type="range" id="symmetryStrengthSlider" min="0.0" max="1.0" step="0.05" value="0.0">
+                <div style="font-size: 10px; color: #888; margin-top: 2px;">
+                    Visual layout only (0 = disabled)
+                </div>
+            </div>
+            
+            <hr>
+            
+            <div class="collapsible" id="paramsToggle">
+                <strong>CUDA-Style Force Parameters</strong>
+            </div>
+            <div class="collapsible-content" id="paramsContent">
+                <div class="slider-container">
+                    <div class="slider-label">
+                        <span>Repulsion Scale</span>
+                        <span class="slider-value" id="scaleValue">1.0</span>
+                    </div>
+                    <input type="range" id="scaleSlider" min="0.1" max="10.0" step="0.1" value="1.0">
+                    <div style="font-size: 10px; color: #888; margin-top: 2px;">
+                        Force strength multiplier
+                    </div>
+                </div>
+
+                <div class="slider-container">
+                    <div class="slider-label">
+                        <span>Attraction Scale</span>
+                        <span class="slider-value" id="attractionValue">0.1</span>
+                    </div>
+                    <input type="range" id="attractionSlider" min="0.0" max="3.0" step="0.1" value="0.1">
+                    <div style="font-size: 10px; color: #888; margin-top: 2px;">
+                        6th-power edge attraction
+                    </div>
+                </div>
+
+                <div class="slider-container">
+                    <div class="slider-label">
+                        <span>Speed Limit</span>
+                        <span class="slider-value" id="speedValue">5.0</span>
+                    </div>
+                    <input type="range" id="speedSlider" min="1" max="50" step="0.5" value="5">
+                    <div style="font-size: 10px; color: #888; margin-top: 2px;">
+                        Low = smooth, high = fast
+                    </div>
+                </div>
+
+                <div class="slider-container">
+                    <div class="slider-label">
+                        <span>Dampening</span>
+                        <span class="slider-value" id="dampeningValue">0.95</span>
+                    </div>
+                    <input type="range" id="dampeningSlider" min="0.5" max="0.999" step="0.001" value="0.95">
+                    <div style="font-size: 10px; color: #888; margin-top: 2px;">
+                        High = smooth, low = chaotic
+                    </div>
+                </div>
+
+                <div class="slider-container">
+                    <div class="slider-label">
+                        <span>Distance Exponent</span>
+                        <span class="slider-value" id="exponentValue">1.5</span>
+                    </div>
+                    <input type="range" id="exponentSlider" min="0.5" max="4.0" step="0.1" value="1.5">
+                    <div style="font-size: 10px; color: #888; margin-top: 2px;">
+                        Power of distance: r^n
+                    </div>
+                </div>
+
+                <div class="slider-container">
+                    <div class="slider-label">
+                        <span>Force Constant</span>
+                        <span class="slider-value" id="constantValue">2.0</span>
+                    </div>
+                    <input type="range" id="constantSlider" min="-2.0" max="10.0" step="0.1" value="2.0">
+                    <div style="font-size: 10px; color: #888; margin-top: 2px;">
+                        Denominator offset
+                    </div>
+                </div>
+
+                <div class="slider-container">
+                    <div class="slider-label">
+                        <span>Iterations</span>
+                        <span class="slider-value" id="iterationsValue">1000</span>
+                    </div>
+                    <input type="range" id="iterationsSlider" min="50" max="2000" step="50" value="1000">
+                    <div style="font-size: 10px; color: #888; margin-top: 2px;">
+                        Higher = smoother (but slower)
+                    </div>
+                </div>
+
+                <div class="slider-container">
+                    <div class="slider-label">
+                        <span>Initial Radius</span>
+                        <span class="slider-value" id="radiusValue">200</span>
+                    </div>
+                    <input type="range" id="radiusSlider" min="50" max="300" step="10" value="200">
+                </div>
+
+                <div class="slider-container">
+                    <div class="slider-label">
+                        <span>Sample Size</span>
+                        <span class="slider-value" id="sampleValue">150</span>
+                    </div>
+                    <input type="range" id="sampleSlider" min="20" max="200" step="10" value="150">
+                </div>
+
+                <button id="applyParamsBtn" class="compact">Apply Parameters</button>
+                <button id="resetParamsBtn" class="compact">Reset to Default</button>
+            </div>
+            
+            <hr>
+            
+            <div class="legend">
+                <strong>Legend</strong>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #ff4444;"></div>
+                    <span>Initial State</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #4488ff;"></div>
+                    <span>Normal State</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #00ff00;"></div>
+                    <span>Winning State</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #ffff00;"></div>
+                    <span>Selected</span>
+                </div>
+            </div>
+        </div>
+
+        <div id="stats" class="panel info-text">
+            <strong>Graph Statistics</strong><br>
+            States: 0<br>
+            Transitions: 0<br>
+            Avg. degree: 0
+        </div>
+
+        <div id="stateInfo" class="panel info-text">
+            <strong>State Information</strong><br>
+            Hover or click on nodes to view details
+        </div>
+
+        <div id="boardState" class="panel hidden" style="position: fixed; top: 80px; right: 15px; left: auto; width: auto; bottom: auto; z-index: 100;">
+            <strong>Board State</strong> <span style="float: right; cursor: pointer; color: #ff4444;" onclick="closeBoardState()">✕</span><br>
+            <div id="boardStateContent" style="margin-top: 10px; color: #888; font-size: 12px;">
+                Click a node to view its board configuration
+            </div>
+        </div>
+
+        <div id="console" class="panel">
+            <strong>Console</strong>
+            <div id="consoleOutput"></div>
+        </div>
+
+        <div id="loading" class="panel">
+            <div class="spinner"></div>
+            <div>Generating state-space graph...</div>
+            <div id="loadingProgress" style="margin-top: 10px; font-size: 14px;"></div>
+        </div>
+    </div>
+
+    <!-- Three.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    
+    <!-- Game Logic and Visualization -->
+    <script src="klotski.js"></script>
+    <script src="visualization.js"></script>
+    <script src="symmetry.js"></script>
+    
+    <script>
+        // Console logging to UI
+        const consoleOutput = document.getElementById('consoleOutput');
+        const originalLog = console.log;
+        console.log = function(...args) {
+            originalLog.apply(console, args);
+            const line = document.createElement('div');
+            line.className = 'console-line';
+            line.textContent = args.join(' ');
+            consoleOutput.appendChild(line);
+            consoleOutput.scrollTop = consoleOutput.scrollHeight;
+        };
+
+        // Layout parameters (CUDA-style, tuned for better spread)
+        let layoutParams = {
+            repulsionScale: 1.0,         // Your optimal value
+            attractionScale: 0.1,        // Your optimal value
+            dampening: 0.95,             // Your optimal value
+            speedLimit: 5.0,             // Speed limit for movement
+            distanceExponent: 1.5,       // Your optimal value
+            forceConstant: 2.0,          // Constant added to denominator
+            iterations: 1000,            // More iterations for smoother layout
+            initialRadius: 200,          // Larger initial distribution
+            sampleSize: 150,             // More samples for better repulsion
+            enforceSymmetry: false,      // Enforce graph symmetries (visual layout only)
+            symmetryStrength: 0.0        // How strongly to enforce symmetries (0-1, 0=disabled)
+        };
+
+        // Custom starting state
+        let customStartState = null;
+
+        // Initialize
+        let visualizer;
+        let currentGraph;
+
+        function init() {
+            visualizer = new GraphVisualizer('container');
+            visualizer.start();
+        }
+
+        function generateGraph() {
+            const layoutType = 'force';  // Always use force-directed layout
+            const loadingElement = document.getElementById('loading');
+            
+            loadingElement.classList.remove('hidden');
+            
+            // Use setTimeout to allow UI to update
+            setTimeout(() => {
+                try {
+                    console.log('=== Starting Graph Generation ===');
+                    const initialState = customStartState || KlotskiState.createInitial();
+                    console.log('Initial state created:', initialState);
+                    const dimStr = initialState.is3D ? `${initialState.width}x${initialState.height}x${initialState.depth}` : `${initialState.width}x${initialState.height}`;
+                    console.log('Board size:', dimStr, '| is3D:', initialState.is3D);
+                    console.log('Blocks:', initialState.blocks.length);
+                    
+                    const graph = new StateSpaceGraph();
+                    graph.generate(initialState);
+                    
+                    currentGraph = graph;
+                    
+                    console.log('=== Visualizing Graph ===');
+                    visualizer.visualizeGraph(graph, layoutType);
+                    
+                    console.log('=== Complete ===');
+                } catch (error) {
+                    console.error('Error generating graph:', error);
+                    console.error('Stack trace:', error.stack);
+                } finally {
+                    loadingElement.classList.add('hidden');
+                }
+            }, 100);
+        }
+
+        function resetCamera() {
+            visualizer.camera.position.set(150, 150, 250);
+            visualizer.controls.target.set(0, 0, 0);
+            visualizer.controls.update();
+        }
+
+        // Setup sliders
+        function setupSliders() {
+            const sliders = [
+                { id: 'scale', param: 'repulsionScale' },
+                { id: 'attraction', param: 'attractionScale' },
+                { id: 'speed', param: 'speedLimit' },
+                { id: 'dampening', param: 'dampening' },
+                { id: 'exponent', param: 'distanceExponent' },
+                { id: 'constant', param: 'forceConstant' },
+                { id: 'iterations', param: 'iterations' },
+                { id: 'radius', param: 'initialRadius' },
+                { id: 'sample', param: 'sampleSize' },
+                { id: 'symmetryStrength', param: 'symmetryStrength' }
+            ];
+
+            sliders.forEach(({ id, param }) => {
+                const slider = document.getElementById(`${id}Slider`);
+                const valueDisplay = document.getElementById(`${id}Value`);
+                
+                slider.addEventListener('input', (e) => {
+                    const value = parseFloat(e.target.value);
+                    layoutParams[param] = value;
+                    valueDisplay.textContent = value;
+                });
+            });
+        }
+
+        function resetParameters() {
+            layoutParams = {
+                repulsionScale: 1.0,         // Your optimal value
+                attractionScale: 0.1,        // Your optimal value
+                dampening: 0.95,             // Your optimal value
+                speedLimit: 5.0,
+                distanceExponent: 1.5,       // Your optimal value
+                forceConstant: 2.0,
+                iterations: 1000,
+                initialRadius: 200,
+                sampleSize: 150,
+                enforceSymmetry: false,
+                symmetryStrength: 0.0
+            };
+
+            // Update sliders
+            document.getElementById('scaleSlider').value = 1.0;
+            document.getElementById('attractionSlider').value = 0.1;
+            document.getElementById('speedSlider').value = 5;
+            document.getElementById('dampeningSlider').value = 0.95;
+            document.getElementById('exponentSlider').value = 1.5;
+            document.getElementById('constantSlider').value = 2.0;
+            document.getElementById('iterationsSlider').value = 1000;
+            document.getElementById('radiusSlider').value = 200;
+            document.getElementById('sampleSlider').value = 150;
+            document.getElementById('symmetryStrengthSlider').value = 0.5;
+
+            // Update displays
+            document.getElementById('scaleValue').textContent = 1.0;
+            document.getElementById('attractionValue').textContent = 0.1;
+            document.getElementById('speedValue').textContent = 5.0;
+            document.getElementById('dampeningValue').textContent = 0.95;
+            document.getElementById('exponentValue').textContent = 1.5;
+            document.getElementById('constantValue').textContent = 2.0;
+            document.getElementById('iterationsValue').textContent = 1000;
+            document.getElementById('radiusValue').textContent = 200;
+            document.getElementById('sampleValue').textContent = 150;
+            document.getElementById('symmetryStrengthValue').textContent = 0.0;
+        }
+
+        function applyParameters() {
+            if (currentGraph) {
+                console.log('Applying new parameters and regenerating layout...');
+                console.log('Parameters:', layoutParams);
+                visualizer.visualizeGraph(currentGraph, 'force');
+            }
+        }
+
+        // Collapsible toggle
+        document.getElementById('paramsToggle').addEventListener('click', function() {
+            this.classList.toggle('collapsed');
+            document.getElementById('paramsContent').classList.toggle('hidden');
+        });
+
+        // Board Editor
+        let editorState = null;
+        let draggedBlock = null;
+        let dragOffset = {x: 0, y: 0};
+        let nextBlockId = 0;
+        let boardWidth = 4;
+        let boardHeight = 5;
+        let boardDepth = 1;  // Start with 2D
+        let is3D = false;
+        let currentViewLayer = 0; // Which Z-layer we're viewing in 3D mode
+        
+        function closeBoardState() {
+            document.getElementById('boardState').classList.add('hidden');
+        }
+
+        function toggleDimension() {
+            const dimension = document.getElementById('boardDimension').value;
+            is3D = dimension === '3D';
+            
+            // Show/hide depth controls
+            const depthLabel = document.getElementById('depthLabel');
+            const pieceDepthLabel = document.getElementById('pieceDepthLabel');
+            const layerControls = document.getElementById('layerControls');
+            
+            if (is3D) {
+                depthLabel.classList.remove('hidden');
+                pieceDepthLabel.classList.remove('hidden');
+                layerControls.classList.remove('hidden');
+                boardDepth = parseInt(document.getElementById('boardDepth').value) || 3;
+                currentViewLayer = 0;
+            } else {
+                depthLabel.classList.add('hidden');
+                pieceDepthLabel.classList.add('hidden');
+                layerControls.classList.add('hidden');
+                boardDepth = 1;
+                currentViewLayer = 0;
+            }
+            
+            updateBoardSize();
+        }
+
+        function changeLayer(delta) {
+            currentViewLayer = Math.max(0, Math.min(boardDepth - 1, currentViewLayer + delta));
+            document.getElementById('currentLayer').textContent = `Layer ${currentViewLayer}`;
+            renderEditorBoard();
+        }
+
+        function moveBlockZ(block, delta) {
+            const newZ = (block.z || 0) + delta;
+            const blockDepth = block.depth || 1;
+            
+            // Check bounds
+            if (newZ < 0 || newZ + blockDepth > boardDepth) {
+                console.log('Cannot move block in Z: out of bounds');
+                return;
+            }
+            
+            // Check for collisions at new Z position
+            if (canPlacePieceAt(block.x, block.y, newZ, block.width, block.height, blockDepth, block.id)) {
+                block.z = newZ;
+                // Update view to show the new layer if piece moved out of view
+                if (newZ > currentViewLayer || newZ + blockDepth <= currentViewLayer) {
+                    currentViewLayer = newZ;
+                    document.getElementById('currentLayer').textContent = `Layer ${currentViewLayer}`;
+                }
+                renderEditorBoard();
+                console.log(`Moved block to Z=${newZ}`);
+            } else {
+                console.log('Cannot move block in Z: collision detected');
+            }
+        }
+
+        function openEditor() {
+            document.getElementById('boardEditor').classList.add('active');
+            // Start with blank board (just needs valid structure)
+            if (customStartState) {
+                editorState = customStartState.clone();
+                boardWidth = editorState.width;
+                boardHeight = editorState.height;
+                boardDepth = editorState.depth || 1;
+                is3D = editorState.is3D || false;
+                
+                // Update UI to match
+                document.getElementById('boardDimension').value = is3D ? '3D' : '2D';
+                if (is3D) {
+                    document.getElementById('depthLabel').classList.remove('hidden');
+                    document.getElementById('pieceDepthLabel').classList.remove('hidden');
+                    document.getElementById('layerControls').classList.remove('hidden');
+                }
+                
+                nextBlockId = editorState.blocks.length > 0 ? Math.max(...editorState.blocks.map(b => b.id)) + 1 : 0;
+            } else {
+                editorState = new KlotskiState([], boardWidth, boardHeight, boardDepth);
+                nextBlockId = 0;
+            }
+            document.getElementById('boardWidth').value = boardWidth;
+            document.getElementById('boardHeight').value = boardHeight;
+            if (is3D) {
+                document.getElementById('boardDepth').value = boardDepth;
+            }
+            renderEditorBoard();
+        }
+        
+        function updateBoardSize() {
+            const newWidth = parseInt(document.getElementById('boardWidth').value);
+            const newHeight = parseInt(document.getElementById('boardHeight').value);
+            const newDepth = is3D ? parseInt(document.getElementById('boardDepth').value) : 1;
+            
+            if (newWidth < 2 || newWidth > 8 || newHeight < 2 || newHeight > 10) {
+                alert('Board width must be 2-8 and height must be 2-10');
+                return;
+            }
+            
+            if (is3D && (newDepth < 2 || newDepth > 6)) {
+                alert('Board depth must be 2-6');
+                return;
+            }
+            
+            boardWidth = newWidth;
+            boardHeight = newHeight;
+            boardDepth = newDepth;
+            
+            // Remove pieces that are now out of bounds
+            const validBlocks = editorState ? editorState.blocks.filter(block => {
+                const blockDepth = block.depth || 1;
+                const blockZ = block.z || 0;
+                return block.x + block.width <= boardWidth && 
+                       block.y + block.height <= boardHeight &&
+                       blockZ + blockDepth <= boardDepth;
+            }) : [];
+            
+            // Create new state with new dimensions
+            editorState = new KlotskiState(validBlocks, boardWidth, boardHeight, boardDepth);
+            
+            renderEditorBoard();
+            const dimStr = is3D ? `${boardWidth}×${boardHeight}×${boardDepth}` : `${boardWidth}×${boardHeight}`;
+            console.log(`Board resized to ${dimStr}`);
+        }
+
+        function closeEditor() {
+            document.getElementById('boardEditor').classList.remove('active');
+        }
+
+        function renderEditorBoard() {
+            const grid = document.getElementById('editorGrid');
+            grid.innerHTML = '';
+            
+            // Update grid template
+            grid.style.gridTemplateColumns = `repeat(${boardWidth}, 60px)`;
+            grid.style.gridTemplateRows = `repeat(${boardHeight}, 60px)`;
+
+            // Create grid cells
+            for (let y = 0; y < boardHeight; y++) {
+                for (let x = 0; x < boardWidth; x++) {
+                    const cell = document.createElement('div');
+                    cell.className = 'grid-cell';
+                    cell.dataset.x = x;
+                    cell.dataset.y = y;
+                    grid.appendChild(cell);
+                }
+            }
+
+            // Color by shape (fixed colors)
+            const getColorByShape = (width, height) => {
+                if (width === 2 && height === 2) return '#ff4444'; // big red
+                if (width === 1 && height === 2) return '#4488ff'; // vertical blue
+                if (width === 2 && height === 1) return '#44ff44'; // horizontal green
+                if (width === 1 && height === 1) return '#ffaa00'; // small orange
+                return '#ff44ff'; // fallback
+            };
+
+            // Render blocks
+            editorState.blocks.forEach(block => {
+                const blockZ = block.z || 0;
+                const blockDepth = block.depth || 1;
+                
+                // In 3D mode, only show blocks that occupy the current viewing layer
+                if (is3D && (blockZ > currentViewLayer || blockZ + blockDepth <= currentViewLayer)) {
+                    return; // Skip this block, it's not in current layer
+                }
+                
+                const blockDiv = document.createElement('div');
+                blockDiv.className = 'block-piece';
+                blockDiv.dataset.blockId = block.id;
+                
+                const color = getColorByShape(block.width, block.height);
+                blockDiv.style.background = color;
+                
+                // Add visual indicator for 3D blocks spanning multiple layers
+                if (is3D && blockDepth > 1) {
+                    blockDiv.style.border = '3px solid #ffaa00'; // Orange border for multi-layer pieces
+                }
+                blockDiv.style.width = (block.width * 60 + (block.width - 1) * 2) + 'px';
+                blockDiv.style.height = (block.height * 60 + (block.height - 1) * 2) + 'px';
+                
+                // Position absolutely within grid
+                blockDiv.style.position = 'absolute';
+                blockDiv.style.left = (10 + block.x * 62) + 'px';
+                blockDiv.style.top = (10 + block.y * 62) + 'px';
+                blockDiv.style.zIndex = '10';
+                
+                // Show piece info
+                if (block.width === 2 && block.height === 2) {
+                    blockDiv.textContent = '★';
+                } else if (is3D) {
+                    // Show Z-position and depth for 3D pieces
+                    if (blockDepth > 1) {
+                        blockDiv.textContent = `Z${blockZ}-${blockZ + blockDepth - 1}`;
+                    } else {
+                        blockDiv.textContent = `Z${blockZ}`;
+                    }
+                    blockDiv.style.fontSize = '10px';
+                    blockDiv.style.color = 'white';
+                } else {
+                    blockDiv.textContent = '';
+                }
+                
+                // Make draggable (X, Y)
+                blockDiv.addEventListener('mousedown', (e) => startDrag(e, block));
+                blockDiv.addEventListener('touchstart', (e) => startDrag(e.touches[0], block));
+                
+                // Add Z-axis movement controls for 3D
+                if (is3D) {
+                    const zControls = document.createElement('div');
+                    zControls.style.cssText = 'position: absolute; top: 2px; right: 2px; display: flex; gap: 2px; z-index: 20;';
+                    zControls.onclick = (e) => e.stopPropagation();
+                    
+                    const backBtn = document.createElement('button');
+                    backBtn.textContent = '◀';
+                    backBtn.style.cssText = 'width: 16px; height: 16px; font-size: 8px; padding: 0; background: #4488ff; color: white; border: none; border-radius: 2px; cursor: pointer;';
+                    backBtn.title = 'Move to back layer (Z-)';
+                    backBtn.onclick = (e) => { e.stopPropagation(); moveBlockZ(block, -1); };
+                    
+                    const frontBtn = document.createElement('button');
+                    frontBtn.textContent = '▶';
+                    frontBtn.style.cssText = 'width: 16px; height: 16px; font-size: 8px; padding: 0; background: #4488ff; color: white; border: none; border-radius: 2px; cursor: pointer;';
+                    frontBtn.title = 'Move to front layer (Z+)';
+                    frontBtn.onclick = (e) => { e.stopPropagation(); moveBlockZ(block, 1); };
+                    
+                    zControls.appendChild(backBtn);
+                    zControls.appendChild(frontBtn);
+                    blockDiv.appendChild(zControls);
+                }
+                
+                // Double click to remove
+                blockDiv.addEventListener('dblclick', (e) => {
+                    e.stopPropagation();
+                    editorState.blocks = editorState.blocks.filter(b => b.id !== block.id);
+                    renderEditorBoard();
+                });
+
+                grid.appendChild(blockDiv);
+            });
+        }
+        
+        function startDrag(e, block) {
+            e.preventDefault();
+            draggedBlock = block;
+            
+            const rect = e.target.getBoundingClientRect();
+            const gridRect = document.getElementById('editorGrid').getBoundingClientRect();
+            
+            dragOffset.x = e.clientX - rect.left;
+            dragOffset.y = e.clientY - rect.top;
+            
+            e.target.classList.add('dragging');
+            
+            document.addEventListener('mousemove', onDrag);
+            document.addEventListener('mouseup', stopDrag);
+            document.addEventListener('touchmove', onTouchDrag);
+            document.addEventListener('touchend', stopDrag);
+        }
+        
+        function onDrag(e) {
+            if (!draggedBlock) return;
+            e.preventDefault();
+            updateDragPosition(e.clientX, e.clientY);
+        }
+        
+        function onTouchDrag(e) {
+            if (!draggedBlock) return;
+            e.preventDefault();
+            updateDragPosition(e.touches[0].clientX, e.touches[0].clientY);
+        }
+        
+        function updateDragPosition(clientX, clientY) {
+            const gridRect = document.getElementById('editorGrid').getBoundingClientRect();
+            
+            // Calculate grid position
+            const relX = clientX - gridRect.left - dragOffset.x - 10;
+            const relY = clientY - gridRect.top - dragOffset.y - 10;
+            
+            const gridX = Math.round(relX / 62);
+            const gridY = Math.round(relY / 62);
+            
+            // Constrain to board
+            const newX = Math.max(0, Math.min(gridX, boardWidth - draggedBlock.width));
+            const newY = Math.max(0, Math.min(gridY, boardHeight - draggedBlock.height));
+            
+            // Check if position is valid (no collision)
+            const dragZ = draggedBlock.z || 0;
+            const dragDepth = draggedBlock.depth || 1;
+            if (canPlacePieceAt(newX, newY, dragZ, draggedBlock.width, draggedBlock.height, dragDepth, draggedBlock.id)) {
+                draggedBlock.x = newX;
+                draggedBlock.y = newY;
+                renderEditorBoard();
+            }
+        }
+        
+        function stopDrag() {
+            if (draggedBlock) {
+                const draggingEl = document.querySelector('.dragging');
+                if (draggingEl) draggingEl.classList.remove('dragging');
+                draggedBlock = null;
+            }
+            document.removeEventListener('mousemove', onDrag);
+            document.removeEventListener('mouseup', stopDrag);
+            document.removeEventListener('touchmove', onTouchDrag);
+            document.removeEventListener('touchend', stopDrag);
+        }
+        
+        function canPlacePieceAt(x, y, z, width, height, depth, excludeId) {
+            // For 2D, z and depth are ignored (z=0, depth=1)
+            z = z || 0;
+            depth = depth || 1;
+            
+            if (x < 0 || y < 0 || z < 0 || 
+                x + width > boardWidth || y + height > boardHeight || z + depth > boardDepth) {
+                return false;
+            }
+            
+            for (const block of editorState.blocks) {
+                if (block.id === excludeId) continue;
+                
+                const blockZ = block.z || 0;
+                const blockDepth = block.depth || 1;
+                
+                // Check for overlap in all 3 dimensions
+                const xOverlap = !(x + width <= block.x || x >= block.x + block.width);
+                const yOverlap = !(y + height <= block.y || y >= block.y + block.height);
+                const zOverlap = !(z + depth <= blockZ || z >= blockZ + blockDepth);
+                
+                if (xOverlap && yOverlap && zOverlap) {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        function clearBoard() {
+            editorState = new KlotskiState([], boardWidth, boardHeight, boardDepth);
+            nextBlockId = 0;
+            renderEditorBoard();
+        }
+
+        function loadPreset(preset) {
+            if (preset === 'default') {
+                editorState = KlotskiState.createInitial();
+                boardWidth = editorState.width;
+                boardHeight = editorState.height;
+                document.getElementById('boardWidth').value = boardWidth;
+                document.getElementById('boardHeight').value = boardHeight;
+                nextBlockId = 10;
+            }
+            renderEditorBoard();
+        }
+        
+        function findEmptySpot(width, height, depth = 1) {
+            // Try to find first available spot
+            for (let z = 0; z <= boardDepth - depth; z++) {
+                for (let y = 0; y <= boardHeight - height; y++) {
+                    for (let x = 0; x <= boardWidth - width; x++) {
+                        if (canPlacePieceAt(x, y, z, width, height, depth, -1)) {
+                            return is3D ? {x, y, z} : {x, y};
+                        }
+                    }
+                }
+            }
+            return null;
+        }
+        
+        function addCustomPiece() {
+            const width = parseInt(document.getElementById('pieceWidth').value);
+            const height = parseInt(document.getElementById('pieceHeight').value);
+            const depth = is3D ? parseInt(document.getElementById('pieceDepth').value) : 1;
+            
+            if (width < 1 || height < 1 || width > boardWidth || height > boardHeight) {
+                alert(`Piece dimensions must be 1-${boardWidth} wide and 1-${boardHeight} tall for this board`);
+                return;
+            }
+            
+            if (is3D && (depth < 1 || depth > boardDepth)) {
+                alert(`Piece depth must be 1-${boardDepth} for this board`);
+                return;
+            }
+            
+            addPieceToBoard(width, height, depth);
+        }
+
+        function addPieceToBoard(width, height, depth = 1) {
+            // In 3D mode, try to find spot starting from current viewing layer
+            const spot = is3D ? findEmptySpotFromLayer(width, height, depth, currentViewLayer) : findEmptySpot(width, height, depth);
+            if (spot) {
+                const piece = {
+                    id: nextBlockId++,
+                    x: spot.x,
+                    y: spot.y,
+                    width: width,
+                    height: height,
+                    name: is3D ? `${width}x${height}x${depth}` : `${width}x${height}`
+                };
+                if (is3D) {
+                    piece.z = spot.z || 0;
+                    piece.depth = depth;
+                }
+                editorState.blocks.push(piece);
+                renderEditorBoard();
+                const dimStr = is3D ? `${width}×${height}×${depth} at (${spot.x}, ${spot.y}, ${spot.z})` : `${width}×${height} at (${spot.x}, ${spot.y})`;
+                console.log(`Added ${dimStr}`);
+            } else {
+                console.warn('No space available for this piece!');
+                alert('No space available for this piece! Try removing some pieces first.');
+            }
+        }
+
+        function findEmptySpotFromLayer(width, height, depth, startLayer) {
+            // Try current layer first, then expand search
+            for (let zOffset = 0; zOffset < boardDepth; zOffset++) {
+                const z = (startLayer + zOffset) % boardDepth;
+                if (z + depth > boardDepth) continue;
+                
+                for (let y = 0; y <= boardHeight - height; y++) {
+                    for (let x = 0; x <= boardWidth - width; x++) {
+                        if (canPlacePieceAt(x, y, z, width, height, depth, -1)) {
+                            return {x, y, z};
+                        }
+                    }
+                }
+            }
+            return null;
+        }
+
+        function applyCustomBoard() {
+            if (editorState.blocks.length === 0) {
+                alert('Please add at least one piece to the board!');
+                return;
+            }
+            // Create properly dimensioned state (including depth for 3D)
+            customStartState = new KlotskiState(editorState.blocks, boardWidth, boardHeight, boardDepth);
+            closeEditor();
+            const dimStr = is3D ? `${boardWidth}×${boardHeight}×${boardDepth}` : `${boardWidth}×${boardHeight}`;
+            console.log(`Custom board set! Size: ${dimStr}, Blocks: ${editorState.blocks.length}, is3D: ${customStartState.is3D}`);
+            console.log('Custom start state:', customStartState);
+            generateGraph();
+        }
+
+        // Graph Export/Import Functions
+        function exportGraphForCUDA() {
+            if (!currentGraph || !visualizer) {
+                console.log('No graph generated yet');
+                return;
+            }
+            
+            const nodeCount = currentGraph.getStateCount();
+            
+            // Get current state data
+            const states = [];
+            for (let i = 0; i < nodeCount; i++) {
+                const state = currentGraph.getStateById(i);
+                states.push({
+                    id: i,
+                    blocks: state.blocks,
+                    width: state.width,
+                    height: state.height,
+                    depth: state.depth || 1,
+                    is3D: state.is3D || false,
+                    hash: state.getHash(),
+                    isWinning: state.isWinning()
+                });
+            }
+            
+            // Get edges
+            const edges = currentGraph.edges.map(edge => ({
+                from: edge.from,
+                to: edge.to,
+                moveId: edge.moveId
+            }));
+            
+            // Get current positions from visualizer
+            const positions = [];
+            for (let i = 0; i < nodeCount * 3; i++) {
+                positions.push(visualizer.positions[i]);
+            }
+            
+            // Export as JSON with current layout
+            const exportData = {
+                states: states,
+                edges: edges,
+                positions: positions,
+                layout_params: layoutParams,
+                metadata: {
+                    node_count: nodeCount,
+                    edge_count: currentGraph.edges.length,
+                    exported_at: new Date().toISOString()
+                }
+            };
+            
+            // Download as JSON
+            const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'klotski_graph_layout.json';
+            a.click();
+            URL.revokeObjectURL(url);
+            
+            console.log('Exported graph with layout:', nodeCount, 'nodes,', currentGraph.edges.length, 'edges');
+        }
+
+        function importCUDALayout() {
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.accept = '.json';
+            input.onchange = (e) => {
+                const file = e.target.files[0];
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    try {
+                        const data = JSON.parse(event.target.result);
+                        
+                        // Check if this is a full graph with layout
+                        if (data.states && data.edges && data.positions) {
+                            console.log('Importing complete graph with layout...');
+                            
+                            // Recreate the graph from the imported data
+                            const states = data.states.map(stateData => {
+                                return new KlotskiState(
+                                    stateData.blocks, 
+                                    stateData.width || 4, 
+                                    stateData.height || 5,
+                                    stateData.depth || 1
+                                );
+                            });
+                            
+                            const importedGraph = new StateSpaceGraph();
+                            importedGraph.stateList = states;
+                            
+                            // Rebuild the states map with state objects
+                            for (let i = 0; i < states.length; i++) {
+                                const state = states[i];
+                                const hash = state.getHash();
+                                importedGraph.states.set(hash, {
+                                    state: state,
+                                    id: i,
+                                    neighbors: []
+                                });
+                            }
+                            
+                            // Rebuild edges and neighbor lists
+                            importedGraph.edges = data.edges;
+                            
+                            for (const edge of data.edges) {
+                                const fromState = states[edge.from];
+                                const toState = states[edge.to];
+                                const fromHash = fromState.getHash();
+                                const toHash = toState.getHash();
+                                
+                                const fromData = importedGraph.states.get(fromHash);
+                                const toData = importedGraph.states.get(toHash);
+                                
+                                if (fromData && !fromData.neighbors.includes(edge.to)) {
+                                    fromData.neighbors.push(edge.to);
+                                }
+                                
+                                if (toData && !toData.neighbors.includes(edge.from)) {
+                                    toData.neighbors.push(edge.from);
+                                }
+                            }
+                            
+                            // Set as current graph
+                            currentGraph = importedGraph;
+                            
+                            // Apply layout params if available
+                            if (data.layout_params) {
+                                Object.assign(layoutParams, data.layout_params);
+                                console.log('Applied imported layout parameters');
+                            }
+                            
+                            // Visualize with imported positions
+                            visualizer.visualizeGraph(currentGraph, 'custom', new Float32Array(data.positions));
+                            
+                            // Verify import
+                            console.log('Graph with layout imported successfully!');
+                            console.log(`  States: ${currentGraph.stateList.length}`);
+                            console.log(`  Edges: ${currentGraph.edges.length}`);
+                            console.log(`  States map size: ${currentGraph.states.size}`);
+                            
+                            // Verify first state has correct structure
+                            if (currentGraph.stateList.length > 0) {
+                                const firstState = currentGraph.stateList[0];
+                                const firstHash = firstState.getHash();
+                                const firstData = currentGraph.states.get(firstHash);
+                                console.log(`  First state check:`, {
+                                    hasState: !!firstData?.state,
+                                    hasNeighbors: Array.isArray(firstData?.neighbors),
+                                    neighborCount: firstData?.neighbors?.length || 0,
+                                    is3D: firstState.is3D
+                                });
+                            }
+                            
+                        } else if (data.positions) {
+                            // Legacy format - just positions
+                            if (!currentGraph) {
+                                console.error('No graph loaded to apply positions to');
+                                return;
+                            }
+                            
+                            let positions;
+                            if (data.num_nodes) {
+                                // CUDA format
+                                positions = new Float32Array(data.num_nodes * 3);
+                                for (let i = 0; i < data.num_nodes; i++) {
+                                    positions[i * 3] = data.positions[i * 3];
+                                    positions[i * 3 + 1] = data.positions[i * 3 + 1];
+                                    positions[i * 3 + 2] = data.positions[i * 3 + 2];
+                                }
+                            } else {
+                                // Direct positions array
+                                positions = new Float32Array(data.positions);
+                            }
+                            
+                            // Apply to visualizer
+                            visualizer.positions = positions;
+                            visualizer.updateNodePositions();
+                            
+                            console.log('Layout positions imported successfully!');
+                        } else {
+                            console.error('Invalid layout data format');
+                        }
+                    } catch (error) {
+                        console.error('Error importing graph layout:', error);
+                    }
+                };
+                reader.readAsText(file);
+            };
+            input.click();
+        }
+
+        // Event listeners
+        document.getElementById('generateBtn').addEventListener('click', generateGraph);
+        document.getElementById('editBoardBtn').addEventListener('click', openEditor);
+        document.getElementById('resetCameraBtn').addEventListener('click', resetCamera);
+        document.getElementById('exportCudaBtn').addEventListener('click', exportGraphForCUDA);
+        document.getElementById('importCudaBtn').addEventListener('click', importCUDALayout);
+        document.getElementById('applyParamsBtn').addEventListener('click', applyParameters);
+        document.getElementById('resetParamsBtn').addEventListener('click', () => {
+            resetParameters();
+            applyParameters();
+        });
+        document.getElementById('showNodesToggle').addEventListener('change', (e) => {
+            visualizer.setShowAllNodes(e.target.checked);
+        });
+        
+
+        setupSliders();
+
+        // Load saved graph on startup
+        async function loadSavedGraph() {
+            try {
+                const response = await fetch('klotski_graph_layout.json');
+                if (!response.ok) {
+                    console.log('No saved graph found, opening editor');
+                    openEditor();
+                    return;
+                }
+                
+                const data = await response.json();
+                console.log('Loading saved graph layout...');
+                
+                // Recreate the graph from the saved data
+                const states = data.states.map(stateData => {
+                    return new KlotskiState(
+                        stateData.blocks, 
+                        stateData.width || 4, 
+                        stateData.height || 5,
+                        stateData.depth || 1
+                    );
+                });
+                
+                const importedGraph = new StateSpaceGraph();
+                importedGraph.stateList = states;
+                
+                // Rebuild the states map with state objects
+                for (let i = 0; i < states.length; i++) {
+                    const state = states[i];
+                    const hash = state.getHash();
+                    importedGraph.states.set(hash, {
+                        state: state,
+                        id: i,
+                        neighbors: []
+                    });
+                }
+                
+                // Rebuild edges and neighbor lists
+                importedGraph.edges = data.edges;
+                
+                for (const edge of data.edges) {
+                    const fromState = states[edge.from];
+                    const toState = states[edge.to];
+                    const fromHash = fromState.getHash();
+                    const toHash = toState.getHash();
+                    
+                    const fromData = importedGraph.states.get(fromHash);
+                    const toData = importedGraph.states.get(toHash);
+                    
+                    if (fromData && !fromData.neighbors.includes(edge.to)) {
+                        fromData.neighbors.push(edge.to);
+                    }
+                    
+                    if (toData && !toData.neighbors.includes(edge.from)) {
+                        toData.neighbors.push(edge.from);
+                    }
+                }
+                
+                // Set as current graph
+                currentGraph = importedGraph;
+                
+                // Apply layout params if available
+                if (data.layout_params) {
+                    Object.assign(layoutParams, data.layout_params);
+                    console.log('Applied saved layout parameters');
+                }
+                
+                // Visualize with saved positions
+                visualizer.visualizeGraph(currentGraph, 'custom', new Float32Array(data.positions));
+                
+                console.log('Saved graph loaded successfully!');
+                console.log(`  States: ${currentGraph.stateList.length}`);
+                console.log(`  Edges: ${currentGraph.edges.length}`);
+                
+            } catch (error) {
+                console.error('Error loading saved graph:', error);
+                console.log('Opening editor instead');
+                openEditor();
+            }
+        }
+
+        // Start the application
+        window.addEventListener('load', () => {
+            init();
+            loadSavedGraph();
+        });
+    </script>
+</body>
+</html>
+
