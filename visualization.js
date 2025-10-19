@@ -313,8 +313,9 @@ class GraphVisualizer {
 
         // Get the hash and neighbors for the selected node
         const state = this.graph.getStateById(nodeId);
-        const hash = state.getHash();
-        const neighbors = this.graph.states.get(hash).neighbors;
+        const hash = state.getHash(this.graph.treatShapesAsUnique);
+        const stateData = this.graph.states.get(hash);
+        const neighbors = stateData ? stateData.neighbors : [];
 
         // Create highlighted edges for connected nodes
         if (this.highlightedEdges) {
@@ -506,7 +507,7 @@ class GraphVisualizer {
             let scale = 1.2; // Keep normal size for raycasting
             
             if (i === this.selectedNode) {
-                color.setHex(0xff0000); // Red for selected
+                color.setHex(0xff0000); // Red for selected (reverted)
                 // Calculate scale based on distance to camera for constant screen size
                 const dx = x - this.camera.position.x;
                 const dy = y - this.camera.position.y;
@@ -617,7 +618,7 @@ class GraphVisualizer {
         if (!infoElement || nodeId < 0) return;
 
         const state = this.graph.getStateById(nodeId);
-        const hash = state.getHash();
+        const hash = state.getHash(this.graph.treatShapesAsUnique);
         const stateData = this.graph.states.get(hash);
         
         let html = `
@@ -646,17 +647,324 @@ class GraphVisualizer {
         const boardWidth = state.width || 4;
         const boardHeight = state.height || 5;
         
-        // Block colors - fixed by shape
-        const getColorByShape = (block) => {
+        // Get normalized shape signature for consistent coloring
+        const getShapeSignature = (block) => {
+            if (block.cells) {
+                // Custom shape: normalize to origin and sort
+                const cells = block.cells.map(([dx, dy, dz = 0]) => [dx, dy, dz]);
+                const minX = Math.min(...cells.map(c => c[0]));
+                const minY = Math.min(...cells.map(c => c[1]));
+                const minZ = Math.min(...cells.map(c => c[2]));
+                const normalized = cells.map(([x, y, z]) => [x - minX, y - minY, z - minZ]);
+                normalized.sort((a, b) => {
+                    if (a[2] !== b[2]) return a[2] - b[2];
+                    if (a[1] !== b[1]) return a[1] - b[1];
+                    return a[0] - b[0];
+                });
+                return `custom:${normalized.map(c => c.join(',')).join(';')}`;
+            } else {
+                // Rectangle: use width x height x depth
+                const depth = block.depth || 1;
+                return state.is3D ? `rect:${block.width}x${block.height}x${depth}` : `rect:${block.width}x${block.height}`;
+            }
+        };
+
+        // Color selection for blocks
+        const getColorByShape = (block, usePerId = false) => {
             if (!block) return '#1a1a2e';
-            const key = `${block.width}x${block.height}`;
-            const colors = {
-                '2x2': '#ff4444',
-                '1x2': '#4488ff',
-                '2x1': '#44ff44',
-                '1x1': '#ffaa44'
+            if (usePerId) {
+                const hue = ((block.id || 0) * 137.5) % 360;
+                return `hsl(${hue}, 70%, 55%)`;
+            }
+            const signature = getShapeSignature(block);
+            // Fixed colors for standard rectangles (default Klotski colors)
+            const standardColors = {
+                'rect:2x2': '#ff4444',
+                'rect:2x2x1': '#ff4444',
+                'rect:1x2': '#4488ff',
+                'rect:1x2x1': '#4488ff',
+                'rect:2x1': '#44ff44',
+                'rect:2x1x1': '#44ff44',
+                'rect:1x1': '#ffaa00',
+                'rect:1x1x1': '#ffaa00'
             };
-            return colors[key] || '#888888';
+            if (standardColors[signature]) return standardColors[signature];
+            // Hash-based hue for custom shapes
+            let hash = 0;
+            for (let i = 0; i < signature.length; i++) {
+                hash = ((hash << 5) - hash) + signature.charCodeAt(i);
+                hash = hash & hash;
+            }
+            const baseHue = (Math.abs(hash) * 137.5) % 360;
+            const avoidRanges = [
+                {center: 0, width: 15},
+                {center: 35, width: 10},
+                {center: 120, width: 15},
+                {center: 225, width: 15}
+            ];
+            let adjustedHue = baseHue;
+            for (const {center, width} of avoidRanges) {
+                const distance = Math.min(
+                    Math.abs(adjustedHue - center),
+                    360 - Math.abs(adjustedHue - center)
+                );
+                if (distance < width) {
+                    if (center === 0) adjustedHue = 300;
+                    else if (center === 35) adjustedHue = 65;
+                    else if (center === 120) adjustedHue = 170;
+                    else if (center === 225) adjustedHue = 270;
+                    break;
+                }
+            }
+            return `hsl(${adjustedHue}, 70%, 55%)`;
+        };
+
+        // Helper function to create a board for a specific layer
+        const createLayerBoard = (state, boardWidth, boardHeight, layerZ, currentNodeId) => {
+            const boardContainer = document.createElement('div');
+            boardContainer.style.cssText = `position: relative; width: ${boardWidth * 27}px; height: ${boardHeight * 27}px; background: #0f0f1e; border-radius: 3px;`;
+            
+            // Track which cells are occupied by pieces (to not draw grid under them)
+            const occupiedCells = new Set();
+            
+            // First pass: mark occupied cells
+            for (const block of state.blocks) {
+                const blockZ = block.z || 0;
+                let blockDepth = block.depth || 1;
+                
+                // For custom shapes, calculate depth based on cell dz values
+                if (block.cells) {
+                    const maxDz = Math.max(...block.cells.map(c => c[2] || 0));
+                    blockDepth = maxDz + 1; // Depth is max dz + 1 (since dz starts at 0)
+                }
+                
+                // Check if this block occupies the current layer
+                if (layerZ < blockZ || layerZ >= blockZ + blockDepth) {
+                    continue; // Block doesn't occupy this layer
+                }
+                
+                if (block.cells) {
+                    // Custom shape: mark each cell
+                    for (const [dx, dy, dz = 0] of block.cells) {
+                        const cellZ = blockZ + dz;
+                        if (cellZ === layerZ) {
+                            occupiedCells.add(`${block.x + dx},${block.y + dy}`);
+                        }
+                    }
+                } else {
+                    // Rectangle: mark all cells
+                    for (let dy = 0; dy < block.height; dy++) {
+                        for (let dx = 0; dx < block.width; dx++) {
+                            occupiedCells.add(`${block.x + dx},${block.y + dy}`);
+                        }
+                    }
+                }
+            }
+            
+            // Draw grid cells only where not occupied
+            for (let y = 0; y < boardHeight; y++) {
+                for (let x = 0; x < boardWidth; x++) {
+                    if (!occupiedCells.has(`${x},${y}`)) {
+                        const cell = document.createElement('div');
+                        cell.style.cssText = `position: absolute; left: ${x * 27}px; top: ${y * 27}px; width: 25px; height: 25px; background: #1a1a2e; border: 1px solid #2a2a3e; border-radius: 2px;`;
+                        boardContainer.appendChild(cell);
+                    }
+                }
+            }
+            
+            // Draw draggable pieces for this layer
+            for (const block of state.blocks) {
+                const blockZ = block.z || 0;
+                let blockDepth = block.depth || 1;
+                
+                // For custom shapes, calculate depth based on cell dz values
+                if (block.cells) {
+                    const maxDz = Math.max(...block.cells.map(c => c[2] || 0));
+                    blockDepth = maxDz + 1; // Depth is max dz + 1 (since dz starts at 0)
+                }
+                
+                // Check if this block occupies the current layer
+                if (layerZ < blockZ || layerZ >= blockZ + blockDepth) {
+                    continue; // Skip blocks not in this layer
+                }
+                
+                const color = getColorByShape(block, this.graph?.treatShapesAsUnique);
+                
+                // Handle custom shapes
+                if (block.cells) {
+                    // Filter cells for this layer
+                    const cellsInLayer = block.cells.filter(([dx, dy, dz = 0]) => {
+                        return blockZ + dz === layerZ;
+                    });
+                    
+                    if (cellsInLayer.length === 0) continue; // No cells in this layer
+                    
+                    // Create a container div for the custom shape
+                    const containerDiv = document.createElement('div');
+                    containerDiv.style.position = 'absolute';
+                    containerDiv.style.zIndex = '10';
+                    containerDiv.style.cursor = 'move';
+                    
+                    // Calculate bounding box for cells in this layer
+                    const minX = Math.min(...cellsInLayer.map(c => c[0]));
+                    const maxX = Math.max(...cellsInLayer.map(c => c[0]));
+                    const minY = Math.min(...cellsInLayer.map(c => c[1]));
+                    const maxY = Math.max(...cellsInLayer.map(c => c[1]));
+                    
+                    containerDiv.style.left = ((block.x + minX) * 27) + 'px';
+                    containerDiv.style.top = ((block.y + minY) * 27) + 'px';
+                    containerDiv.style.width = ((maxX - minX + 1) * 27 - 2) + 'px';
+                    containerDiv.style.height = ((maxY - minY + 1) * 27 - 2) + 'px';
+                    
+                    // Create SVG to draw the complex shape
+                    const svgNS = 'http://www.w3.org/2000/svg';
+                    const svg = document.createElementNS(svgNS, 'svg');
+                    svg.setAttribute('width', '100%');
+                    svg.setAttribute('height', '100%');
+                    svg.style.display = 'block';
+                    svg.style.pointerEvents = 'none'; // Let events pass through
+                    
+                    // Draw each cell as a solid filled rectangle (no grid lines)
+                    cellsInLayer.forEach(([dx, dy]) => {
+                        const rect = document.createElementNS(svgNS, 'rect');
+                        rect.setAttribute('x', (dx - minX) * 27);
+                        rect.setAttribute('y', (dy - minY) * 27);
+                        rect.setAttribute('width', 25);
+                        rect.setAttribute('height', 25);
+                        rect.setAttribute('fill', color);
+                        rect.setAttribute('stroke', 'rgba(0, 0, 0, 0.3)');
+                        rect.setAttribute('stroke-width', '1');
+                        rect.setAttribute('rx', '2');
+                        svg.appendChild(rect);
+                    });
+                    
+                    containerDiv.appendChild(svg);
+                    
+                    containerDiv.dataset.blockId = block.id;
+                    containerDiv.dataset.customShape = 'true';
+                    containerDiv.dataset.cells = JSON.stringify(block.cells);
+                    if (state.is3D) {
+                        containerDiv.dataset.blockZ = block.z || 0;
+                    }
+                    
+                    containerDiv.style.userSelect = 'none';
+                    
+                    // Any part can drag the whole shape
+                    this.makePieceDraggable(containerDiv, nodeId, boardWidth, boardHeight, state);
+                    
+                    boardContainer.appendChild(containerDiv);
+                    continue; // Skip standard rendering
+                }
+                
+                // Standard rectangular pieces
+                // For 3D blocks with depth > 1, render as individual cells in each layer
+                if (state.is3D && blockDepth > 1) {
+                    // Render each cell of the block in each layer it occupies
+                    for (let dz = 0; dz < blockDepth; dz++) {
+                        const cellZ = blockZ + dz;
+                        if (cellZ === layerZ) {
+                            const piece = document.createElement('div');
+                            const isBig = block.width === 2 && block.height === 2;
+                            const border = isBig ? '2px solid #ffff00' : '1px solid #3a3a4e';
+                            
+                            // Full opacity for all layers when showing them separately
+                            let opacity = 1.0;
+                            
+                            piece.style.cssText = `
+                                position: absolute;
+                                left: ${block.x * 27}px;
+                                top: ${block.y * 27}px;
+                                width: ${block.width * 27 - 2}px;
+                                height: ${block.height * 27 - 2}px;
+                                background: ${color};
+                                border: ${border};
+                                border-radius: 2px;
+                                cursor: move;
+                                z-index: 10;
+                                user-select: none;
+                                opacity: ${opacity};
+                                display: flex;
+                                align-items: center;
+                                justify-content: center;
+                                font-size: 10px;
+                                color: white;
+                                font-weight: bold;
+                            `;
+                            
+                            // Show star for big piece
+                            if (isBig) {
+                                piece.textContent = '★';
+                            }
+                            
+                            piece.dataset.blockId = block.id;
+                            piece.dataset.blockWidth = block.width;
+                            piece.dataset.blockHeight = block.height;
+                            piece.dataset.blockZ = cellZ;
+                            piece.dataset.blockDepth = 1; // Each rendered cell is 1 layer deep
+                            
+                            // Add drag functionality
+                            this.makePieceDraggable(piece, nodeId, boardWidth, boardHeight, state);
+                            
+                            // Add compound move indicator if this piece is part of compound moves
+                            this.addCompoundMoveIndicator(piece, block, state);
+                            
+                            boardContainer.appendChild(piece);
+                        }
+                    }
+                } else {
+                    // 2D or single-layer 3D blocks - render as one piece
+                    const piece = document.createElement('div');
+                    const isBig = block.width === 2 && block.height === 2;
+                    const border = isBig ? '2px solid #ffff00' : '1px solid #3a3a4e';
+                    
+                    // Full opacity for all layers when showing them separately
+                    let opacity = 1.0;
+                    
+                    piece.style.cssText = `
+                        position: absolute;
+                        left: ${block.x * 27}px;
+                        top: ${block.y * 27}px;
+                        width: ${block.width * 27 - 2}px;
+                        height: ${block.height * 27 - 2}px;
+                        background: ${color};
+                        border: ${border};
+                        border-radius: 2px;
+                        cursor: move;
+                        z-index: 10;
+                        user-select: none;
+                        opacity: ${opacity};
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                        font-size: 10px;
+                        color: white;
+                        font-weight: bold;
+                    `;
+                    
+                    // Show star for big piece
+                    if (isBig) {
+                        piece.textContent = '★';
+                    }
+                    
+                    piece.dataset.blockId = block.id;
+                    piece.dataset.blockWidth = block.width;
+                    piece.dataset.blockHeight = block.height;
+                    if (state.is3D) {
+                        piece.dataset.blockZ = block.z || 0;
+                        piece.dataset.blockDepth = block.depth || 1;
+                    }
+                    
+                    // Add drag functionality
+                    this.makePieceDraggable(piece, nodeId, boardWidth, boardHeight, state);
+                    
+                    // Add compound move indicator if this piece is part of compound moves
+                    this.addCompoundMoveIndicator(piece, block, state);
+                    
+                    boardContainer.appendChild(piece);
+                }
+            }
+            
+            return boardContainer;
         };
         
         // Clear and create board container
@@ -665,94 +973,28 @@ class GraphVisualizer {
         const container = document.createElement('div');
         container.style.cssText = 'display: inline-block; background: #1a1a2e; padding: 8px; border-radius: 5px;';
         
-        const boardContainer = document.createElement('div');
-        boardContainer.style.cssText = `position: relative; width: ${boardWidth * 27}px; height: ${boardHeight * 27}px; background: #0f0f1e; border-radius: 3px;`;
-        
-        // Draw grid cells
-        for (let y = 0; y < boardHeight; y++) {
-            for (let x = 0; x < boardWidth; x++) {
-                const cell = document.createElement('div');
-                cell.style.cssText = `position: absolute; left: ${x * 27}px; top: ${y * 27}px; width: 25px; height: 25px; background: #1a1a2e; border: 1px solid #2a2a3e; border-radius: 2px;`;
-                boardContainer.appendChild(cell);
-            }
-        }
-        
-        // Draw draggable pieces
-        for (const block of state.blocks) {
-            const piece = document.createElement('div');
-            const color = getColorByShape(block);
-            const isBig = block.width === 2 && block.height === 2;
-            const border = isBig ? '2px solid #ffff00' : '1px solid #3a3a4e';
+        // For 3D, show layers vertically stacked with scrolling
+        if (state.is3D && state.depth > 1) {
+            container.style.cssText = 'display: flex; flex-direction: column; gap: 10px; background: #1a1a2e; padding: 8px; border-radius: 5px; max-height: 80vh; overflow-y: auto;';
             
-            // Add opacity for 3D layers (pieces further back are more transparent)
-            let opacity = 1.0;
-            if (state.is3D && block.z !== undefined && block.z > 0) {
-                opacity = 1 - block.z * 0.2;
-            }
-            
-            piece.style.cssText = `
-                position: absolute;
-                left: ${block.x * 27}px;
-                top: ${block.y * 27}px;
-                width: ${block.width * 27 - 2}px;
-                height: ${block.height * 27 - 2}px;
-                background: ${color};
-                border: ${border};
-                border-radius: 2px;
-                cursor: move;
-                z-index: 10;
-                user-select: none;
-                opacity: ${opacity};
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                font-size: 10px;
-                color: white;
-                font-weight: bold;
-            `;
-            
-            // Add Z-layer indicator for 3D
-            if (state.is3D && block.z !== undefined && block.z > 0) {
-                piece.textContent = `L${block.z}`;
-            } else if (isBig) {
-                piece.textContent = '★';
-            }
-            
-            piece.dataset.blockId = block.id;
-            piece.dataset.blockWidth = block.width;
-            piece.dataset.blockHeight = block.height;
-            if (state.is3D) {
-                piece.dataset.blockZ = block.z || 0;
-                piece.dataset.blockDepth = block.depth || 1;
-            }
-            
-            // Add drag functionality
-            this.makePieceDraggable(piece, nodeId, boardWidth, boardHeight, state);
-            
-            // Add Z-axis controls for 3D
-            if (state.is3D) {
-                const zControls = document.createElement('div');
-                zControls.style.cssText = 'position: absolute; top: 2px; right: 2px; display: flex; gap: 2px; z-index: 20;';
-                zControls.onclick = (e) => e.stopPropagation();
+            // Create a board for each layer
+            for (let z = 0; z < state.depth; z++) {
+                const layerContainer = document.createElement('div');
+                layerContainer.style.cssText = 'display: flex; flex-direction: column; align-items: center;';
                 
-                const backBtn = document.createElement('button');
-                backBtn.textContent = '◀';
-                backBtn.style.cssText = 'width: 14px; height: 14px; font-size: 7px; padding: 0; background: #4488ff; color: white; border: none; border-radius: 2px; cursor: pointer;';
-                backBtn.title = 'Move to back layer (Z-)';
-                backBtn.onclick = (e) => { e.stopPropagation(); this.tryMoveBlockZ(nodeId, block, -1); };
+                const layerLabel = document.createElement('div');
+                layerLabel.style.cssText = 'color: #4488ff; font-size: 11px; margin-bottom: 4px; font-weight: bold;';
+                layerLabel.textContent = `Layer ${z}`;
+                layerContainer.appendChild(layerLabel);
                 
-                const frontBtn = document.createElement('button');
-                frontBtn.textContent = '▶';
-                frontBtn.style.cssText = 'width: 14px; height: 14px; font-size: 7px; padding: 0; background: #4488ff; color: white; border: none; border-radius: 2px; cursor: pointer;';
-                frontBtn.title = 'Move to front layer (Z+)';
-                frontBtn.onclick = (e) => { e.stopPropagation(); this.tryMoveBlockZ(nodeId, block, 1); };
-                
-                zControls.appendChild(backBtn);
-                zControls.appendChild(frontBtn);
-                piece.appendChild(zControls);
+                const boardContainer = createLayerBoard(state, boardWidth, boardHeight, z, nodeId);
+                layerContainer.appendChild(boardContainer);
+                container.appendChild(layerContainer);
             }
-            
-            boardContainer.appendChild(piece);
+        } else {
+            // 2D board or single layer - show all pieces
+            const boardContainer = createLayerBoard(state, boardWidth, boardHeight, 0, nodeId);
+            container.appendChild(boardContainer);
         }
         
         const info = document.createElement('div');
@@ -760,7 +1002,6 @@ class GraphVisualizer {
         const dimensionInfo = state.is3D ? `${boardWidth}×${boardHeight}×${state.depth}` : `${boardWidth}×${boardHeight}`;
         info.textContent = `State #${nodeId} (${dimensionInfo}) - Drag pieces to navigate`;
         
-        container.appendChild(boardContainer);
         container.appendChild(info);
         
         // Add 3D movement info
@@ -768,48 +1009,40 @@ class GraphVisualizer {
             const movementInfo = document.createElement('div');
             movementInfo.style.cssText = 'text-align: center; margin-top: 3px; font-size: 9px; color: #4488ff;';
             const layers = new Set(state.blocks.map(b => b.z || 0));
-            movementInfo.textContent = `Layers occupied: ${Array.from(layers).sort((a,b) => a-b).join(', ')} | Can move in X, Y, Z directions`;
+            movementInfo.textContent = `Pieces can move between layers via dragging in X, Y directions`;
             container.appendChild(movementInfo);
         }
         
         contentElement.appendChild(container);
     }
 
-    tryMoveBlockZ(currentNodeId, block, delta) {
-        const currentState = this.graph.getStateById(currentNodeId);
-        const currentZ = block.z || 0;
-        const newZ = currentZ + delta;
+    // Add visual indicator for pieces that can participate in compound moves
+    addCompoundMoveIndicator(piece, block, state) {
+        // Check if this piece can participate in compound moves
+        const compoundMoves = state.generateCompoundMoves();
+        const participatingMoves = compoundMoves.filter(move => 
+            move.pieces.includes(block.id)
+        );
         
-        // Check if move is valid
-        if (currentState.canMove(block.id, block.x, block.y, newZ)) {
-            // Create move object for 3D
-            const move = {
-                blockId: block.id,
-                fromX: block.x,
-                fromY: block.y,
-                fromZ: currentZ,
-                toX: block.x,
-                toY: block.y,
-                toZ: newZ
-            };
+        if (participatingMoves.length > 0) {
+            // Add a subtle glow effect to indicate compound move capability
+            piece.style.boxShadow = '0 0 8px rgba(255, 255, 0, 0.6)';
+            piece.title = `Can participate in ${participatingMoves.length} compound move(s)`;
             
-            const newState = currentState.applyMove(move);
-            const newHash = newState.getHash();
-            
-            // Check if this state exists in the graph
-            const stateData = this.graph.states.get(newHash);
-            if (stateData) {
-                // Navigate to this state!
-                this.selectedNode = stateData.id;
-                this.updateNodeColors();
-                this.highlightConnectedEdges(stateData.id);
-                this.displayBoardState(stateData.id);
-                console.log(`Navigated to state #${stateData.id} (moved block in Z)`);
-            } else {
-                console.log('This state is not in the graph');
-            }
-        } else {
-            console.log('Cannot move block in Z direction');
+            // Add a small indicator dot
+            const indicator = document.createElement('div');
+            indicator.style.cssText = `
+                position: absolute;
+                top: 2px;
+                left: 2px;
+                width: 6px;
+                height: 6px;
+                background: #ffff00;
+                border-radius: 50%;
+                z-index: 15;
+                pointer-events: none;
+            `;
+            piece.appendChild(indicator);
         }
     }
 
@@ -817,24 +1050,66 @@ class GraphVisualizer {
         let isDragging = false;
         let startX, startY, initialLeft, initialTop;
         
+        // Check if this is a custom shape
+        const isCustomShape = piece.dataset.customShape === 'true';
+        
         const onMouseMove = (e) => {
             if (!isDragging) return;
             
             const dx = e.clientX - startX;
             const dy = e.clientY - startY;
             
-            // Get piece dimensions
-            const pieceWidth = parseInt(piece.dataset.blockWidth) * 27 - 2;
-            const pieceHeight = parseInt(piece.dataset.blockHeight) * 27 - 2;
-            
-            // Calculate board bounds (in pixels)
-            const boardPixelWidth = boardWidth * 27;
-            const boardPixelHeight = boardHeight * 27;
-            
-            // Constrain position to stay within board
+            // Calculate potential grid position
             let newLeft = initialLeft + dx;
             let newTop = initialTop + dy;
+            let newX = Math.round(newLeft / 27);
+            let newY = Math.round(newTop / 27);
             
+            // Get the actual block from state
+            const blockId = parseInt(piece.dataset.blockId);
+            const currentState = this.graph.getStateById(currentNodeId);
+            const currentBlock = currentState.blocks.find(b => b.id === blockId);
+            
+            // For custom shapes, calculate offset from original position
+            if (isCustomShape) {
+                const cells = JSON.parse(piece.dataset.cells);
+                const minX = Math.min(...cells.map(c => c[0]));
+                const minY = Math.min(...cells.map(c => c[1]));
+                newX = newX - minX;
+                newY = newY - minY;
+            }
+            
+            // Get piece dimensions
+            let pieceWidth, pieceHeight;
+            if (isCustomShape) {
+                pieceWidth = parseInt(piece.style.width);
+                pieceHeight = parseInt(piece.style.height);
+            } else {
+                const blockWidth = parseInt(piece.dataset.blockWidth);
+                const blockHeight = parseInt(piece.dataset.blockHeight);
+                pieceWidth = blockWidth * 27 - 2;
+                pieceHeight = blockHeight * 27 - 2;
+                // Constrain to bounds
+                newX = Math.max(0, Math.min(newX, boardWidth - blockWidth));
+                newY = Math.max(0, Math.min(newY, boardHeight - blockHeight));
+            }
+            
+            const currentZ = state.is3D ? (parseInt(piece.dataset.blockZ) || 0) : 0;
+            
+            // Check if this position is valid (no collision)
+            if (currentState.canMove(blockId, newX, newY, currentZ)) {
+                // Valid position - allow the move
+                newLeft = newX * 27 + (isCustomShape ? Math.min(...JSON.parse(piece.dataset.cells).map(c => c[0])) * 27 : 0);
+                newTop = newY * 27 + (isCustomShape ? Math.min(...JSON.parse(piece.dataset.cells).map(c => c[1])) * 27 : 0);
+            } else {
+                // Invalid - keep at current position
+                newLeft = parseInt(piece.style.left);
+                newTop = parseInt(piece.style.top);
+            }
+            
+            // Apply bounds constraint
+            const boardPixelWidth = boardWidth * 27;
+            const boardPixelHeight = boardHeight * 27;
             newLeft = Math.max(0, Math.min(newLeft, boardPixelWidth - pieceWidth));
             newTop = Math.max(0, Math.min(newTop, boardPixelHeight - pieceHeight));
             
@@ -857,17 +1132,31 @@ class GraphVisualizer {
             let newX = Math.round(finalLeft / 27);
             let newY = Math.round(finalTop / 27);
             
-            // Ensure position is within valid bounds
-            const blockWidth = parseInt(piece.dataset.blockWidth);
-            const blockHeight = parseInt(piece.dataset.blockHeight);
-            newX = Math.max(0, Math.min(newX, boardWidth - blockWidth));
-            newY = Math.max(0, Math.min(newY, boardHeight - blockHeight));
-            
+            // Get the actual block from state
             const blockId = parseInt(piece.dataset.blockId);
-            const currentZ = state.is3D ? (parseInt(piece.dataset.blockZ) || 0) : 0;
-            
-            // Try to move to this position
             const currentState = this.graph.getStateById(currentNodeId);
+            const currentBlock = currentState.blocks.find(b => b.id === blockId);
+            
+            // For custom shapes, calculate offset from original position
+            if (isCustomShape) {
+                const cells = JSON.parse(piece.dataset.cells);
+                const minX = Math.min(...cells.map(c => c[0]));
+                const minY = Math.min(...cells.map(c => c[1]));
+                
+                // Adjust position to account for cell offsets
+                newX = newX - minX;
+                newY = newY - minY;
+            }
+            
+            // Ensure position is within valid bounds
+            if (!isCustomShape) {
+                const blockWidth = parseInt(piece.dataset.blockWidth);
+                const blockHeight = parseInt(piece.dataset.blockHeight);
+                newX = Math.max(0, Math.min(newX, boardWidth - blockWidth));
+                newY = Math.max(0, Math.min(newY, boardHeight - blockHeight));
+            }
+            
+            const currentZ = state.is3D ? (parseInt(piece.dataset.blockZ) || 0) : 0;
             
             // Check if move is valid
             if (currentState.canMove(blockId, newX, newY, currentZ)) {
@@ -876,7 +1165,7 @@ class GraphVisualizer {
                     {blockId, fromX: currentState.blocks.find(b => b.id === blockId).x, fromY: currentState.blocks.find(b => b.id === blockId).y, fromZ: currentZ, toX: newX, toY: newY, toZ: currentZ} :
                     {blockId, toX: newX, toY: newY};
                 const newState = currentState.applyMove(move);
-                const newHash = newState.getHash();
+                const newHash = newState.getHash(this.graph.treatShapesAsUnique);
                 
                 // Check if this state exists in the graph
                 const stateData = this.graph.states.get(newHash);

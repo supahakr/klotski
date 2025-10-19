@@ -579,6 +579,11 @@
                     <div class="visual-piece vertical-piece" onclick="addPieceToBoard(1, 2)" title="Vertical 1×2"></div>
                     <div class="visual-piece horizontal-piece" onclick="addPieceToBoard(2, 1)" title="Horizontal 2×1"></div>
                     <div class="visual-piece small-piece" onclick="addPieceToBoard(1, 1)" title="Small 1×1"></div>
+                    <div class="visual-piece" onclick="toggleDrawMode()" id="drawModeBtn" title="Draw Custom Shape" style="width: 60px; height: 60px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); font-size: 32px;">✏</div>
+                </div>
+                <div id="drawModeInfo" style="display: none; text-align: center; margin-top: 10px; padding: 8px; background: #667eea; border-radius: 5px; color: white; font-size: 12px;">
+                    <strong>Draw Mode Active:</strong> Click empty cells to draw shape. Click again to finish.<br>
+                    <span style="font-size: 10px; opacity: 0.9;">Tip: Only the cells you click are solid. Empty space inside shapes won't block other pieces.</span>
                 </div>
             </div>
             
@@ -604,6 +609,32 @@
         </div>
     </div>
     
+    <!-- Shape Designer Modal -->
+    <div id="shapeDesigner" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.8); z-index: 10000; align-items: center; justify-content: center;">
+        <div style="background: #16213e; padding: 30px; border-radius: 10px; max-width: 600px; max-height: 90vh; overflow-y: auto;">
+            <h2 style="color: white; margin: 0 0 20px 0; text-align: center;">Custom Shape Designer</h2>
+            
+            <div style="margin-bottom: 20px; text-align: center;">
+                <label style="color: #aaa; margin-right: 20px;">
+                    Grid Size: 
+                    <input type="number" id="shapeGridSize" min="3" max="8" value="5" onchange="updateShapeGrid()" style="width: 50px; padding: 4px; background: #2a2a3e; border: 1px solid #4488ff; color: white; border-radius: 3px; margin-left: 5px;">
+                </label>
+                <button onclick="clearShapeGrid()" style="padding: 6px 15px; background: #ff4444; border: none; color: white; border-radius: 5px; cursor: pointer;">Clear</button>
+            </div>
+            
+            <p style="color: #aaa; text-align: center; font-size: 13px; margin-bottom: 15px;">
+                Click cells to toggle them. Shape must be connected.
+            </p>
+            
+            <div id="shapeGrid" style="display: inline-grid; gap: 2px; margin: 0 auto; background: #0f1624; padding: 10px; border-radius: 5px;"></div>
+            
+            <div style="margin-top: 20px; text-align: center;">
+                <button onclick="addCustomShapeToBoard()" style="padding: 10px 30px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border: none; color: white; border-radius: 5px; cursor: pointer; font-size: 14px; font-weight: bold; margin-right: 10px;">Add to Board</button>
+                <button onclick="closeShapeDesigner()" style="padding: 10px 30px; background: #555; border: none; color: white; border-radius: 5px; cursor: pointer; font-size: 14px;">Cancel</button>
+            </div>
+        </div>
+    </div>
+    
     <div id="ui">
         <div id="header">
             <h1>KLOTSKI STATE-SPACE GRAPH</h1>
@@ -613,6 +644,12 @@
             <button id="generateBtn">Generate Graph</button>
             <button id="editBoardBtn">Edit Starting Board</button>
             <button id="resetCameraBtn">Reset Camera</button>
+            <div style="margin-top: 10px; font-size: 12px;">
+                <label>
+                    <input type="checkbox" id="uniqueShapesCheckbox" style="margin-right: 5px;">
+                    Treat same-shaped pieces as unique
+                </label>
+            </div>
             
             <hr style="margin: 10px 0;">
             
@@ -621,6 +658,10 @@
             </div>
             <button id="exportCudaBtn">Export Graph with Layout</button>
             <button id="importCudaBtn">Import Graph Layout</button>
+            
+            <div style="margin-top: 10px;">
+                <button id="debugCompoundBtn" onclick="debugCompoundMoves()">Debug Compound Moves</button>
+            </div>
             
             <div style="margin-top: 10px;">
                 <label style="display: flex; align-items: center; cursor: pointer;">
@@ -847,9 +888,19 @@
         }
 
         function generateGraph() {
+            console.log('🚀 generateGraph() called');
             const layoutType = 'force';  // Always use force-directed layout
             const loadingElement = document.getElementById('loading');
             const loadingMessage = document.getElementById('loadingMessage');
+            
+            // Check if user wants to treat same-shaped pieces as unique
+            const treatShapesAsUnique = document.getElementById('uniqueShapesCheckbox').checked;
+            console.log('✅ Checkbox checked:', treatShapesAsUnique);
+            
+            // Clear existing graph
+            const hadPreviousGraph = currentGraph !== null;
+            currentGraph = null;
+            console.log('🗑️ Cleared previous graph:', hadPreviousGraph);
             
             loadingMessage.textContent = 'Generating state-space graph...';
             loadingElement.classList.remove('hidden');
@@ -863,14 +914,18 @@
                     const dimStr = initialState.is3D ? `${initialState.width}x${initialState.height}x${initialState.depth}` : `${initialState.width}x${initialState.height}`;
                     console.log('Board size:', dimStr, '| is3D:', initialState.is3D);
                     console.log('Blocks:', initialState.blocks.length);
+                    console.log('Treat same-shaped pieces as unique:', treatShapesAsUnique);
                     
                     const graph = new StateSpaceGraph();
-                    graph.generate(initialState);
+                    console.log('⏳ Calling graph.generate with treatShapesAsUnique:', treatShapesAsUnique);
+                    graph.generate(initialState, 100000, treatShapesAsUnique);
+                    console.log('✅ Graph generated:', graph.stateList.length, 'states');
                     
                     currentGraph = graph;
                     
                     console.log('=== Visualizing Graph ===');
                     visualizer.visualizeGraph(graph, layoutType);
+                    console.log('✅ Visualization complete');
                     
                     console.log('=== Complete ===');
                 } catch (error) {
@@ -1093,11 +1148,27 @@
             
             // Remove pieces that are now out of bounds
             const validBlocks = editorState ? editorState.blocks.filter(block => {
-                const blockDepth = block.depth || 1;
                 const blockZ = block.z || 0;
-                return block.x + block.width <= boardWidth && 
-                       block.y + block.height <= boardHeight &&
-                       blockZ + blockDepth <= boardDepth;
+                
+                if (block.cells) {
+                    // Custom shape: check all cells
+                    for (const [dx, dy, dz = 0] of block.cells) {
+                        const cellX = block.x + dx;
+                        const cellY = block.y + dy;
+                        const cellZ = blockZ + dz;
+                        if (cellX < 0 || cellY < 0 || cellZ < 0 ||
+                            cellX >= boardWidth || cellY >= boardHeight || cellZ >= boardDepth) {
+                            return false; // Cell is out of bounds
+                        }
+                    }
+                    return true; // All cells are in bounds
+                } else {
+                    // Rectangle: check bounds
+                    const blockDepth = block.depth || 1;
+                    return block.x + block.width <= boardWidth && 
+                           block.y + block.height <= boardHeight &&
+                           blockZ + blockDepth <= boardDepth;
+                }
             }) : [];
             
             // Create new state with new dimensions
@@ -1112,6 +1183,84 @@
             document.getElementById('boardEditor').classList.remove('active');
         }
 
+        // Draw mode state
+        let drawMode = false;
+        let drawingCells = [];
+        let isDraggingInDrawMode = false;
+        let drawStartCell = null;
+        let drawModeAction = 'add'; // 'add' or 'remove'
+        
+        function toggleDrawMode() {
+            drawMode = !drawMode;
+            const btn = document.getElementById('drawModeBtn');
+            const info = document.getElementById('drawModeInfo');
+            
+            if (drawMode) {
+                btn.style.background = '#ff4444'; // Red when active
+                btn.textContent = '✓';
+                info.style.display = 'block';
+                drawingCells = [];
+            } else {
+                // Finish drawing
+                if (drawingCells.length > 0) {
+                    finishDrawing();
+                }
+                btn.style.background = 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)';
+                btn.textContent = '✏';
+                info.style.display = 'none';
+                drawingCells = [];
+            }
+            renderEditorBoard();
+        }
+        
+        // Add global mouse up handler for draw mode
+        document.addEventListener('mouseup', () => {
+            if (isDraggingInDrawMode) {
+                isDraggingInDrawMode = false;
+                drawStartCell = null;
+            }
+        });
+        
+        function finishDrawing() {
+            if (drawingCells.length === 0) {
+                alert('Please select at least one cell!');
+                return;
+            }
+            
+            // Check connectivity
+            if (!isShapeConnected(drawingCells)) {
+                alert('Shape must be connected! All cells should be adjacent.');
+                drawingCells = [];
+                renderEditorBoard();
+                return;
+            }
+            
+            // Normalize to origin
+            const minX = Math.min(...drawingCells.map(c => c.x));
+            const minY = Math.min(...drawingCells.map(c => c.y));
+            const minZ = Math.min(...drawingCells.map(c => c.z));
+            
+            const cells = drawingCells.map(c => [c.x - minX, c.y - minY, c.z - minZ]);
+            const originX = Math.min(...drawingCells.map(c => c.x));
+            const originY = Math.min(...drawingCells.map(c => c.y));
+            const originZ = Math.min(...drawingCells.map(c => c.z));
+            
+            // Create the piece
+            const piece = {
+                id: nextBlockId++,
+                x: originX,
+                y: originY,
+                z: originZ,
+                cells: cells,
+                name: `custom-${nextBlockId}`
+            };
+            
+            editorState.blocks.push(piece);
+            console.log('✓ Added custom shape:', piece);
+            console.log(`  Position: (${originX}, ${originY}, ${originZ})`);
+            console.log(`  Cells (relative):`, cells);
+        }
+        
         function renderEditorBoard() {
             const grid = document.getElementById('editorGrid');
             grid.innerHTML = '';
@@ -1127,24 +1276,212 @@
                     cell.className = 'grid-cell';
                     cell.dataset.x = x;
                     cell.dataset.y = y;
+                    
+                    // Add click and drag handlers for draw mode
+                    if (drawMode) {
+                        cell.style.cursor = 'crosshair';
+                        
+                        // Mouse down - start dragging
+                        cell.addEventListener('mousedown', (e) => {
+                            e.stopPropagation();
+                            e.preventDefault();
+                            isDraggingInDrawMode = true;
+                            drawStartCell = {x: parseInt(cell.dataset.x), y: parseInt(cell.dataset.y)};
+                            
+                            const cellX = parseInt(cell.dataset.x);
+                            const cellY = parseInt(cell.dataset.y);
+                            const cellZ = is3D ? currentViewLayer : 0;
+                            
+                            // Check if cell is occupied
+                            if (isPieceAt(cellX, cellY, cellZ)) {
+                                isDraggingInDrawMode = false;
+                                drawStartCell = null;
+                                return; // Can't draw on occupied cells
+                            }
+                            
+                            // Toggle cell in drawing and set action mode
+                            const idx = drawingCells.findIndex(c => c.x === cellX && c.y === cellY && c.z === cellZ);
+                            if (idx >= 0) {
+                                drawingCells.splice(idx, 1);
+                                drawModeAction = 'remove'; // Dragging will remove cells
+                            } else {
+                                drawingCells.push({x: cellX, y: cellY, z: cellZ});
+                                drawModeAction = 'add'; // Dragging will add cells
+                            }
+                            renderEditorBoard();
+                        });
+                        
+                        // Mouse enter - continue dragging
+                        cell.addEventListener('mouseenter', (e) => {
+                            if (!isDraggingInDrawMode) return;
+                            
+                            const cellX = parseInt(cell.dataset.x);
+                            const cellY = parseInt(cell.dataset.y);
+                            const cellZ = is3D ? currentViewLayer : 0;
+                            
+                            // Check if cell is occupied
+                            if (isPieceAt(cellX, cellY, cellZ)) {
+                                return; // Can't draw on occupied cells
+                            }
+                            
+                            // Add or remove based on action mode
+                            const idx = drawingCells.findIndex(c => c.x === cellX && c.y === cellY && c.z === cellZ);
+                            if (drawModeAction === 'add' && idx < 0) {
+                                drawingCells.push({x: cellX, y: cellY, z: cellZ});
+                                renderEditorBoard();
+                            } else if (drawModeAction === 'remove' && idx >= 0) {
+                                drawingCells.splice(idx, 1);
+                                renderEditorBoard();
+                            }
+                        });
+                    }
+                    
                     grid.appendChild(cell);
                 }
             }
-
-            // Color by shape (fixed colors)
-            const getColorByShape = (width, height) => {
-                if (width === 2 && height === 2) return '#ff4444'; // big red
-                if (width === 1 && height === 2) return '#4488ff'; // vertical blue
-                if (width === 2 && height === 1) return '#44ff44'; // horizontal green
-                if (width === 1 && height === 1) return '#ffaa00'; // small orange
-                return '#ff44ff'; // fallback
-            };
+            
+            // Draw preview cells for drawing mode
+            if (drawMode) {
+                for (const {x, y, z} of drawingCells) {
+                    if (!is3D || z === currentViewLayer) {
+                        const previewDiv = document.createElement('div');
+                        previewDiv.style.cssText = `
+                            position: absolute;
+                            left: ${10 + x * 62}px;
+                            top: ${10 + y * 62}px;
+                            width: 60px;
+                            height: 60px;
+                            background: rgba(102, 126, 234, 0.6);
+                            border: 2px solid #667eea;
+                            border-radius: 4px;
+                            z-index: 5;
+                            pointer-events: none;
+                        `;
+                        grid.appendChild(previewDiv);
+                    }
+                }
+            }
 
             // Render blocks
             editorState.blocks.forEach(block => {
                 const blockZ = block.z || 0;
                 const blockDepth = block.depth || 1;
                 
+                // Get color based on shape signature
+                const color = getBlockColor(block);
+                
+                // Handle custom shapes differently
+                if (block.cells) {
+                    // For custom shapes, check if any cells are in this layer
+                    const cellsInLayer = block.cells.filter(([dx, dy, dz = 0]) => {
+                        return !is3D || (blockZ + dz) === currentViewLayer;
+                    });
+                    
+                    if (cellsInLayer.length === 0) return; // No cells in this layer
+                    
+                    // Create a container div that looks like one solid piece
+                    const containerDiv = document.createElement('div');
+                    containerDiv.className = 'block-piece';
+                    containerDiv.dataset.blockId = block.id;
+                    containerDiv.style.position = 'absolute';
+                    containerDiv.style.zIndex = '10'
+                    
+                    const minX = Math.min(...cellsInLayer.map(c => c[0]));
+                    const maxX = Math.max(...cellsInLayer.map(c => c[0]));
+                    const minY = Math.min(...cellsInLayer.map(c => c[1]));
+                    const maxY = Math.max(...cellsInLayer.map(c => c[1]));
+                    
+                    containerDiv.style.left = (10 + (block.x + minX) * 62) + 'px';
+                    containerDiv.style.top = (10 + (block.y + minY) * 62) + 'px';
+                    containerDiv.style.width = ((maxX - minX + 1) * 62 - 2) + 'px';
+                    containerDiv.style.height = ((maxY - minY + 1) * 62 - 2) + 'px';
+                    
+                    // Container always passes through to not block grid cells
+                    containerDiv.style.pointerEvents = 'none';
+                    containerDiv.style.cursor = '';
+                    
+                    // Create SVG to draw the complex shape
+                    const svgNS = 'http://www.w3.org/2000/svg';
+                    const svg = document.createElementNS(svgNS, 'svg');
+                    svg.setAttribute('width', '100%');
+                    svg.setAttribute('height', '100%');
+                    svg.style.display = 'block';
+                    
+                    // In draw mode, disable all pointer events
+                    if (drawMode) {
+                        svg.style.pointerEvents = 'none';
+                    } else {
+                        svg.style.pointerEvents = 'auto'; // SVG captures events for delegation
+                    }
+                    
+                    // Draw each cell as a rectangle in the SVG
+                    // Match exact grid cell size (60x60) and position
+                    cellsInLayer.forEach(([dx, dy]) => {
+                        const rect = document.createElementNS(svgNS, 'rect');
+                        rect.setAttribute('x', (dx - minX) * 62);
+                        rect.setAttribute('y', (dy - minY) * 62);
+                        rect.setAttribute('width', 60);
+                        rect.setAttribute('height', 60);
+                        rect.setAttribute('fill', color);
+                        rect.setAttribute('stroke', 'rgba(0, 0, 0, 0.3)');
+                        rect.setAttribute('stroke-width', '2');
+                        rect.setAttribute('rx', '4');
+                        if (drawMode) {
+                            rect.style.pointerEvents = 'none'; // Explicitly disable in draw mode
+                        } else {
+                            rect.style.cursor = 'grab';
+                            rect.style.pointerEvents = 'auto';
+                        }
+                        svg.appendChild(rect);
+                    });
+                    
+                    containerDiv.appendChild(svg);
+                    
+                    // Add shadow and styling
+                    containerDiv.style.filter = 'drop-shadow(0 2px 4px rgba(0, 0, 0, 0.2))';
+                    containerDiv.style.userSelect = 'none';
+                    
+                    // Track double-click manually to avoid drag interference
+                    let lastClickTime = 0;
+                    const handleClick = (e) => {
+                        const now = Date.now();
+                        if (now - lastClickTime < 300) {
+                            // Double click detected
+                            e.stopPropagation();
+                            e.preventDefault();
+                            console.log('Double-click detected on custom shape, deleting...');
+                            editorState.blocks = editorState.blocks.filter(b => b.id !== block.id);
+                            renderEditorBoard();
+                        }
+                        lastClickTime = now;
+                    };
+                    
+                    // Only add interaction handlers if not in draw mode
+                    if (!drawMode) {
+                        svg.addEventListener('click', handleClick);
+                        
+                        // Make draggable - use event delegation on SVG
+                        svg.addEventListener('mousedown', (e) => {
+                            // Only start drag if clicking on a rect (filled cell)
+                            if (e.target.tagName === 'rect') {
+                                startDrag(e, block);
+                            }
+                        });
+                        svg.addEventListener('touchstart', (e) => {
+                            // Check touch target
+                            const touch = e.touches[0];
+                            const target = document.elementFromPoint(touch.clientX, touch.clientY);
+                            if (target && target.tagName === 'rect') {
+                                startDrag(touch, block);
+                            }
+                        });
+                    }
+                    
+                    grid.appendChild(containerDiv);
+                    return; // Skip standard rendering
+                }
+                
+                // Standard rectangular pieces
                 // In 3D mode, only show blocks that occupy the current viewing layer
                 if (is3D && (blockZ > currentViewLayer || blockZ + blockDepth <= currentViewLayer)) {
                     return; // Skip this block, it's not in current layer
@@ -1154,8 +1491,12 @@
                 blockDiv.className = 'block-piece';
                 blockDiv.dataset.blockId = block.id;
                 
-                const color = getColorByShape(block.width, block.height);
                 blockDiv.style.background = color;
+                
+                // In draw mode, disable pointer events on rectangular pieces too
+                if (drawMode) {
+                    blockDiv.style.pointerEvents = 'none';
+                }
                 
                 // Add visual indicator for 3D blocks spanning multiple layers
                 if (is3D && blockDepth > 1) {
@@ -1186,9 +1527,11 @@
                     blockDiv.textContent = '';
                 }
                 
-                // Make draggable (X, Y)
-                blockDiv.addEventListener('mousedown', (e) => startDrag(e, block));
-                blockDiv.addEventListener('touchstart', (e) => startDrag(e.touches[0], block));
+                // Make draggable (X, Y) - only if not in draw mode
+                if (!drawMode) {
+                    blockDiv.addEventListener('mousedown', (e) => startDrag(e, block));
+                    blockDiv.addEventListener('touchstart', (e) => startDrag(e.touches[0], block));
+                }
                 
                 // Add Z-axis movement controls for 3D
                 if (is3D) {
@@ -1213,12 +1556,14 @@
                     blockDiv.appendChild(zControls);
                 }
                 
-                // Double click to remove
-                blockDiv.addEventListener('dblclick', (e) => {
-                    e.stopPropagation();
-                    editorState.blocks = editorState.blocks.filter(b => b.id !== block.id);
-                    renderEditorBoard();
-                });
+                // Double click to remove - only if not in draw mode
+                if (!drawMode) {
+                    blockDiv.addEventListener('dblclick', (e) => {
+                        e.stopPropagation();
+                        editorState.blocks = editorState.blocks.filter(b => b.id !== block.id);
+                        renderEditorBoard();
+                    });
+                }
 
                 grid.appendChild(blockDiv);
             });
@@ -1228,11 +1573,22 @@
             e.preventDefault();
             draggedBlock = block;
             
-            const rect = e.target.getBoundingClientRect();
             const gridRect = document.getElementById('editorGrid').getBoundingClientRect();
             
-            dragOffset.x = e.clientX - rect.left;
-            dragOffset.y = e.clientY - rect.top;
+            // For custom shapes, calculate offset from block origin, not from clicked element
+            if (block.cells) {
+                // Get the actual block position on the grid
+                const blockScreenX = gridRect.left + 10 + block.x * 62;
+                const blockScreenY = gridRect.top + 10 + block.y * 62;
+                
+                dragOffset.x = e.clientX - blockScreenX;
+                dragOffset.y = e.clientY - blockScreenY;
+            } else {
+                // For rectangles, use the element's position
+                const rect = e.target.getBoundingClientRect();
+                dragOffset.x = e.clientX - rect.left;
+                dragOffset.y = e.clientY - rect.top;
+            }
             
             e.target.classList.add('dragging');
             
@@ -1264,14 +1620,44 @@
             const gridX = Math.round(relX / 62);
             const gridY = Math.round(relY / 62);
             
-            // Constrain to board
-            const newX = Math.max(0, Math.min(gridX, boardWidth - draggedBlock.width));
-            const newY = Math.max(0, Math.min(gridY, boardHeight - draggedBlock.height));
-            
-            // Check if position is valid (no collision)
+            // Check if this is a custom shape or rectangle
             const dragZ = draggedBlock.z || 0;
             const dragDepth = draggedBlock.depth || 1;
-            if (canPlacePieceAt(newX, newY, dragZ, draggedBlock.width, draggedBlock.height, dragDepth, draggedBlock.id)) {
+            let newX, newY, canPlace;
+            
+            if (draggedBlock.cells) {
+                // Custom shape
+                newX = gridX;
+                newY = gridY;
+                canPlace = canPlacePieceAt(newX, newY, dragZ, draggedBlock.cells, null, dragDepth, draggedBlock.id);
+                
+                // Debug logging for custom shapes
+                if (!canPlace && (Math.abs(newX - draggedBlock.x) <= 1 && Math.abs(newY - draggedBlock.y) <= 1)) {
+                    console.log(`❌ Cannot move custom shape to (${newX}, ${newY}):`);
+                    console.log('  Current position:', draggedBlock.x, draggedBlock.y);
+                    console.log('  Checking cells:', draggedBlock.cells);
+                    console.log('  Collision details:');
+                    draggedBlock.cells.forEach(([dx, dy, dz = 0]) => {
+                        const checkX = newX + dx;
+                        const checkY = newY + dy;
+                        const checkZ = dragZ + dz;
+                        const occupied = isPieceAt(checkX, checkY, checkZ, draggedBlock.id);
+                        const outOfBounds = checkX < 0 || checkY < 0 || checkZ < 0 || 
+                            checkX >= boardWidth || checkY >= boardHeight || checkZ >= boardDepth;
+                        if (occupied || outOfBounds) {
+                            console.log(`    ⚠ Cell (${dx},${dy},${dz}) → (${checkX},${checkY},${checkZ}): ${occupied ? 'BLOCKED by another piece' : 'OUT OF BOUNDS'}`);
+                        }
+                    });
+                    console.log('  💡 Tip: In Klotski, pieces slide into empty spaces. They cannot push other pieces.');
+                }
+            } else {
+                // Rectangle
+                newX = Math.max(0, Math.min(gridX, boardWidth - draggedBlock.width));
+                newY = Math.max(0, Math.min(gridY, boardHeight - draggedBlock.height));
+                canPlace = canPlacePieceAt(newX, newY, dragZ, draggedBlock.width, draggedBlock.height, dragDepth, draggedBlock.id);
+            }
+            
+            if (canPlace) {
                 draggedBlock.x = newX;
                 draggedBlock.y = newY;
                 renderEditorBoard();
@@ -1290,32 +1676,191 @@
             document.removeEventListener('touchend', stopDrag);
         }
         
-        function canPlacePieceAt(x, y, z, width, height, depth, excludeId) {
+        function canPlacePieceAt(x, y, z, widthOrCells, height, depth, excludeId) {
+            // Support both rectangular pieces and custom shapes
+            // widthOrCells can be either width (number) or cells (array)
+            const isCustomShape = Array.isArray(widthOrCells);
+            
             // For 2D, z and depth are ignored (z=0, depth=1)
             z = z || 0;
             depth = depth || 1;
             
-            if (x < 0 || y < 0 || z < 0 || 
-                x + width > boardWidth || y + height > boardHeight || z + depth > boardDepth) {
-                return false;
+            if (isCustomShape) {
+                // Check each cell of the custom shape
+                const cells = widthOrCells;
+                for (const [dx, dy, dz = 0] of cells) {
+                    const cellX = x + dx;
+                    const cellY = y + dy;
+                    const cellZ = z + dz;
+                    
+                    // Check bounds
+                    if (cellX < 0 || cellY < 0 || cellZ < 0 ||
+                        cellX >= boardWidth || cellY >= boardHeight || cellZ >= boardDepth) {
+                        return false;
+                    }
+                    
+                    // Check collision with other blocks (cell-by-cell)
+                    if (isPieceAt(cellX, cellY, cellZ, excludeId)) {
+                        return false;
+                    }
+                }
+                return true;
+            } else {
+                // Rectangle check - check each cell individually
+                const width = widthOrCells;
+                
+                if (x < 0 || y < 0 || z < 0 || 
+                    x + width > boardWidth || y + height > boardHeight || z + depth > boardDepth) {
+                    return false;
+                }
+                
+                // Check each cell of the rectangle for collision
+                for (let dz = 0; dz < depth; dz++) {
+                    for (let dy = 0; dy < height; dy++) {
+                        for (let dx = 0; dx < width; dx++) {
+                            if (isPieceAt(x + dx, y + dy, z + dz, excludeId)) {
+                                return false;
+                            }
+                        }
+                    }
+                }
+                return true;
             }
-            
+        }
+        
+        // Helper function to check if any cell of a custom shape occupies a given position
+        function doesCustomShapeOccupyCell(block, targetX, targetY, targetZ) {
+            if (!block.cells) return false;
+            const blockZ = block.z || 0;
+            for (const [dx, dy, dz = 0] of block.cells) {
+                if (block.x + dx === targetX && 
+                    block.y + dy === targetY && 
+                    blockZ + dz === targetZ) {
+                    return true;
+                }
+            }
+            return false;
+        }
+        
+        function isPieceAt(x, y, z, excludeId = -1) {
+            z = z || 0; // Default Z for 2D
             for (const block of editorState.blocks) {
                 if (block.id === excludeId) continue;
                 
-                const blockZ = block.z || 0;
-                const blockDepth = block.depth || 1;
-                
-                // Check for overlap in all 3 dimensions
-                const xOverlap = !(x + width <= block.x || x >= block.x + block.width);
-                const yOverlap = !(y + height <= block.y || y >= block.y + block.height);
-                const zOverlap = !(z + depth <= blockZ || z >= blockZ + blockDepth);
-                
-                if (xOverlap && yOverlap && zOverlap) {
-                    return false;
+                if (block.cells) {
+                    // Custom shape: check all cells
+                    for (const [dx, dy, dz = 0] of block.cells) {
+                        const blockZ = block.z || 0;
+                        if (block.x + dx === x && block.y + dy === y && (blockZ + dz) === z) {
+                            return true;
+                        }
+                    }
+                } else {
+                    // Rectangle
+                    const blockZ = block.z || 0;
+                    const blockDepth = block.depth || 1;
+                    
+                    if (x >= block.x && x < block.x + block.width &&
+                        y >= block.y && y < block.y + block.height &&
+                        z >= blockZ && z < blockZ + blockDepth) {
+                        return true;
+                    }
                 }
             }
-            return true;
+            return false;
+        }
+        
+        // Get normalized shape signature for consistent coloring
+        function getShapeSignature(block) {
+            if (block.cells) {
+                // Custom shape: normalize to origin and sort
+                const cells = block.cells.map(([dx, dy, dz = 0]) => [dx, dy, dz]);
+                
+                // Find min coordinates
+                const minX = Math.min(...cells.map(c => c[0]));
+                const minY = Math.min(...cells.map(c => c[1]));
+                const minZ = Math.min(...cells.map(c => c[2]));
+                
+                // Normalize to origin
+                const normalized = cells.map(([x, y, z]) => [x - minX, y - minY, z - minZ]);
+                
+                // Sort
+                normalized.sort((a, b) => {
+                    if (a[2] !== b[2]) return a[2] - b[2];
+                    if (a[1] !== b[1]) return a[1] - b[1];
+                    return a[0] - b[0];
+                });
+                
+                return `custom:${normalized.map(c => c.join(',')).join(';')}`;
+            } else {
+                // Rectangle: use width x height x depth
+                const depth = block.depth || 1;
+                return is3D ? `rect:${block.width}x${block.height}x${depth}` : `rect:${block.width}x${block.height}`;
+            }
+        }
+        
+        // Get color for a block based on its shape
+        function getBlockColor(block) {
+            const signature = getShapeSignature(block);
+            
+            // Fixed colors for standard rectangles (default Klotski colors)
+            // Match both 2D (rect:WxH) and 3D (rect:WxHxD) signatures
+            const standardColors = {
+                'rect:2x2': '#ff4444',  // Red for 2x2 (big piece)
+                'rect:2x2x1': '#ff4444',
+                'rect:1x2': '#4488ff',  // Blue for 1x2 (vertical)
+                'rect:1x2x1': '#4488ff',
+                'rect:2x1': '#44ff44',  // Green for 2x1 (horizontal)
+                'rect:2x1x1': '#44ff44',
+                'rect:1x1': '#ffaa00',  // Orange for 1x1 (small)
+                'rect:1x1x1': '#ffaa00'
+            };
+            
+            if (standardColors[signature]) {
+                return standardColors[signature];
+            }
+            
+            // For custom shapes, generate color based on shape signature
+            // Same-shaped pieces will have the same color
+            let hash = 0;
+            for (let i = 0; i < signature.length; i++) {
+                hash = ((hash << 5) - hash) + signature.charCodeAt(i);
+                hash = hash & hash;
+            }
+            
+            // Use golden angle for good distribution across full spectrum
+            const baseHue = (Math.abs(hash) * 137.5) % 360;
+            
+            // Narrow avoid ranges around standard piece colors only:
+            // Red: 0±15, Orange: 35±10, Green: 120±15, Blue: 225±15
+            const avoidRanges = [
+                {center: 0, width: 15},     // Red
+                {center: 35, width: 10},    // Orange  
+                {center: 120, width: 15},   // Green
+                {center: 225, width: 15}    // Blue
+            ];
+            
+            let adjustedHue = baseHue;
+            
+            // Check if we're too close to any standard color
+            for (const {center, width} of avoidRanges) {
+                const distance = Math.min(
+                    Math.abs(adjustedHue - center),
+                    360 - Math.abs(adjustedHue - center)  // Wrap around
+                );
+                
+                if (distance < width) {
+                    // Shift away from this color
+                    // Push to midpoint between this color and the next
+                    if (center === 0) adjustedHue = 300; // Between blue and red → magenta
+                    else if (center === 35) adjustedHue = 65; // Between orange and green → yellow-green
+                    else if (center === 120) adjustedHue = 170; // Between green and blue → cyan
+                    else if (center === 225) adjustedHue = 270; // Between blue and red → purple
+                    break;
+                }
+            }
+            
+            return `hsl(${adjustedHue}, 70%, 55%)`;
         }
 
         function clearBoard() {
@@ -1369,6 +1914,9 @@
         }
 
         function addPieceToBoard(width, height, depth = 1) {
+            console.log(`Trying to add piece ${width}×${height}×${depth}...`);
+            console.log(`  Current pieces on board: ${editorState.blocks.length}`);
+            
             // In 3D mode, try to find spot starting from current viewing layer
             const spot = is3D ? findEmptySpotFromLayer(width, height, depth, currentViewLayer) : findEmptySpot(width, height, depth);
             if (spot) {
@@ -1387,9 +1935,17 @@
                 editorState.blocks.push(piece);
                 renderEditorBoard();
                 const dimStr = is3D ? `${width}×${height}×${depth} at (${spot.x}, ${spot.y}, ${spot.z})` : `${width}×${height} at (${spot.x}, ${spot.y})`;
-                console.log(`Added ${dimStr}`);
+                console.log(`✓ Added ${dimStr}`);
             } else {
-                console.warn('No space available for this piece!');
+                console.error('✗ No space available for this piece!');
+                console.log('  Board occupancy:');
+                editorState.blocks.forEach(b => {
+                    if (b.cells) {
+                        console.log(`    Custom shape at (${b.x}, ${b.y}, ${b.z || 0}):`, b.cells);
+                    } else {
+                        console.log(`    Rectangle ${b.width}×${b.height} at (${b.x}, ${b.y}, ${b.z || 0})`);
+                    }
+                });
                 alert('No space available for this piece! Try removing some pieces first.');
             }
         }
@@ -1425,6 +1981,306 @@
             generateGraph();
         }
 
+        // Custom Shape Designer
+        let shapeGridCells = [];
+        let shapeGridSize = 5;
+
+        function openShapeDesigner() {
+            document.getElementById('shapeDesigner').style.display = 'flex';
+            shapeGridSize = parseInt(document.getElementById('shapeGridSize').value) || 5;
+            updateShapeGrid();
+        }
+
+        function closeShapeDesigner() {
+            document.getElementById('shapeDesigner').style.display = 'none';
+        }
+
+        function updateShapeGrid() {
+            shapeGridSize = parseInt(document.getElementById('shapeGridSize').value) || 5;
+            const grid = document.getElementById('shapeGrid');
+            grid.innerHTML = '';
+            grid.style.gridTemplateColumns = `repeat(${shapeGridSize}, 40px)`;
+            
+            shapeGridCells = [];
+            for (let y = 0; y < shapeGridSize; y++) {
+                for (let x = 0; x < shapeGridSize; x++) {
+                    const cell = document.createElement('div');
+                    cell.style.width = '40px';
+                    cell.style.height = '40px';
+                    cell.style.background = '#1a1a2e';
+                    cell.style.border = '1px solid #4488ff';
+                    cell.style.cursor = 'pointer';
+                    cell.style.transition = 'all 0.2s';
+                    cell.dataset.x = x;
+                    cell.dataset.y = y;
+                    cell.dataset.active = 'false';
+                    
+                    cell.addEventListener('click', () => {
+                        const isActive = cell.dataset.active === 'true';
+                        cell.dataset.active = isActive ? 'false' : 'true';
+                        cell.style.background = isActive ? '#1a1a2e' : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)';
+                        cell.style.transform = isActive ? 'scale(1)' : 'scale(0.95)';
+                    });
+                    
+                    cell.addEventListener('mouseenter', () => {
+                        if (cell.dataset.active === 'false') {
+                            cell.style.background = '#2a2a3e';
+                        }
+                    });
+                    
+                    cell.addEventListener('mouseleave', () => {
+                        if (cell.dataset.active === 'false') {
+                            cell.style.background = '#1a1a2e';
+                        }
+                    });
+                    
+                    grid.appendChild(cell);
+                    shapeGridCells.push(cell);
+                }
+            }
+        }
+
+        function clearShapeGrid() {
+            shapeGridCells.forEach(cell => {
+                cell.dataset.active = 'false';
+                cell.style.background = '#1a1a2e';
+                cell.style.transform = 'scale(1)';
+            });
+        }
+
+        function addCustomShapeToBoard() {
+            // Collect active cells
+            const activeCells = shapeGridCells.filter(cell => cell.dataset.active === 'true').map(cell => ({
+                x: parseInt(cell.dataset.x),
+                y: parseInt(cell.dataset.y)
+            }));
+            
+            if (activeCells.length === 0) {
+                alert('Please select at least one cell!');
+                return;
+            }
+            
+            // Check if shape is connected using BFS
+            if (!isShapeConnected(activeCells)) {
+                alert('Shape must be connected! All cells should be adjacent to each other.');
+                return;
+            }
+            
+            // Normalize shape: shift to origin (0, 0)
+            const minX = Math.min(...activeCells.map(c => c.x));
+            const minY = Math.min(...activeCells.map(c => c.y));
+            const normalizedCells = activeCells.map(c => [c.x - minX, c.y - minY, 0]); // [dx, dy, dz]
+            
+            // Find a spot on the board for this shape
+            const spot = findEmptySpotForShape(normalizedCells);
+            if (!spot) {
+                alert('No space on the board for this shape!');
+                return;
+            }
+            
+            // Add the piece
+            const piece = {
+                id: nextBlockId++,
+                x: spot.x,
+                y: spot.y,
+                z: spot.z || 0,
+                cells: normalizedCells,
+                name: `custom-${nextBlockId}`
+            };
+            
+            editorState.blocks.push(piece);
+            renderEditorBoard();
+            closeShapeDesigner();
+            console.log('Added custom shape piece:', piece);
+        }
+
+        function isShapeConnected(cells) {
+            if (cells.length === 0) return false;
+            if (cells.length === 1) return true;
+            
+            // BFS to check connectivity (including Z-direction)
+            const visited = new Set();
+            const queue = [cells[0]];
+            const cellZ = cells[0].z !== undefined ? cells[0].z : 0;
+            visited.add(`${cells[0].x},${cells[0].y},${cellZ}`);
+            
+            while (queue.length > 0) {
+                const current = queue.shift();
+                const currentZ = current.z !== undefined ? current.z : 0;
+                
+                // Check all 6 neighbors (including Z-direction for 3D)
+                const neighbors = [
+                    {x: current.x + 1, y: current.y, z: currentZ},
+                    {x: current.x - 1, y: current.y, z: currentZ},
+                    {x: current.x, y: current.y + 1, z: currentZ},
+                    {x: current.x, y: current.y - 1, z: currentZ},
+                    {x: current.x, y: current.y, z: currentZ + 1},
+                    {x: current.x, y: current.y, z: currentZ - 1}
+                ];
+                
+                for (const neighbor of neighbors) {
+                    const nZ = neighbor.z !== undefined ? neighbor.z : 0;
+                    const key = `${neighbor.x},${neighbor.y},${nZ}`;
+                    if (!visited.has(key) && cells.some(c => {
+                        const cZ = c.z !== undefined ? c.z : 0;
+                        return c.x === neighbor.x && c.y === neighbor.y && cZ === nZ;
+                    })) {
+                        visited.add(key);
+                        queue.push(neighbor);
+                    }
+                }
+            }
+            
+            return visited.size === cells.length;
+        }
+
+        function findEmptySpotForShape(cells) {
+            // Try to find a spot on the current viewing layer
+            const layerZ = is3D ? currentViewLayer : 0;
+            
+            for (let y = 0; y < boardHeight; y++) {
+                for (let x = 0; x < boardWidth; x++) {
+                    // Check if all cells of the shape fit here
+                    let fits = true;
+                    for (const [dx, dy, dz] of cells) {
+                        const checkX = x + dx;
+                        const checkY = y + dy;
+                        const checkZ = layerZ + dz;
+                        
+                        // Check bounds
+                        if (checkX < 0 || checkY < 0 || checkZ < 0 ||
+                            checkX >= boardWidth || checkY >= boardHeight || checkZ >= boardDepth) {
+                            fits = false;
+                            break;
+                        }
+                        
+                        // Check if occupied
+                        if (isPieceAt(checkX, checkY, checkZ)) {
+                            fits = false;
+                            break;
+                        }
+                    }
+                    
+                    if (fits) {
+                        return {x, y, z: layerZ};
+                    }
+                }
+            }
+            
+            return null;
+        }
+
+        // Debug compound moves
+        function debugCompoundMoves() {
+            if (!currentGraph || currentGraph.getStateCount() === 0) {
+                alert('No graph generated yet. Generate a graph first.');
+                return;
+            }
+            
+            console.log('=== DEBUGGING COMPOUND MOVES ===');
+            
+            // Test compound moves on the first state
+            const firstState = currentGraph.getStateById(0);
+            console.log('Testing compound moves on first state:', firstState);
+            
+            const compoundMoves = firstState.generateCompoundMoves();
+            console.log(`Found ${compoundMoves.length} compound moves (after filtering redundant ones):`);
+            
+            // Also show single moves for comparison
+            const singleMoves = firstState.getSingleMoves();
+            console.log(`Found ${singleMoves.length} single moves:`);
+            
+            compoundMoves.forEach((move, i) => {
+                console.log(`  Compound Move ${i + 1}:`, {
+                    type: move.type,
+                    pieces: move.pieces,
+                    direction: move.direction,
+                    fromPositions: move.fromPositions,
+                    toPositions: move.toPositions
+                });
+            });
+            
+            // Test dependency graph for each direction
+            const directions = firstState.is3D ? 
+                [[1,0,0], [-1,0,0], [0,1,0], [0,-1,0], [0,0,1], [0,0,-1]] :
+                [[1,0,0], [-1,0,0], [0,1,0], [0,-1,0]];
+            
+            console.log('\n=== DEPENDENCY GRAPHS ===');
+            directions.forEach((dir, i) => {
+                const deps = firstState.buildDependencyGraph(dir);
+                console.log(`Direction ${i + 1} [${dir.join(',')}]:`, deps);
+                
+                const sccs = firstState.findStronglyConnectedComponents(deps);
+                console.log(`  SCCs:`, sccs);
+                
+                // Show which pieces are truly interlocked
+                sccs.forEach((scc, sccIndex) => {
+                    if (scc.length > 1) {
+                        console.log(`    SCC ${sccIndex}: Pieces ${scc.join(', ')} are interlocked`);
+                        
+                        // Check if they're truly interlocked (can't move individually)
+                        let allBlocked = true;
+                        for (const pieceId of scc) {
+                            const block = firstState.blocks.find(b => b.id === pieceId);
+                            const blockZ = block.z || 0;
+                            const newX = block.x + dir[0];
+                            const newY = block.y + dir[1];
+                            const newZ = blockZ + dir[2];
+                            
+                            if (firstState.canMove(pieceId, newX, newY, newZ)) {
+                                console.log(`      Piece ${pieceId} CAN move individually - not truly interlocked`);
+                                allBlocked = false;
+                            }
+                        }
+                        if (allBlocked) {
+                            console.log(`      All pieces in SCC ${sccIndex} are truly blocked`);
+                        }
+                    }
+                });
+            });
+            
+            // Show results in UI
+            const results = document.createElement('div');
+            results.style.cssText = `
+                position: fixed;
+                top: 50%;
+                left: 50%;
+                transform: translate(-50%, -50%);
+                background: #1a1a2e;
+                border: 2px solid #4488ff;
+                border-radius: 10px;
+                padding: 20px;
+                max-width: 80vw;
+                max-height: 80vh;
+                overflow-y: auto;
+                z-index: 1000;
+                color: white;
+                font-family: monospace;
+                font-size: 12px;
+            `;
+            
+            results.innerHTML = `
+                <h3 style="margin-top: 0; color: #4488ff;">Compound Moves Debug</h3>
+                <p><strong>Single moves:</strong> ${singleMoves.length}</p>
+                <p><strong>Compound moves (after filtering):</strong> ${compoundMoves.length}</p>
+                <p style="font-size: 10px; color: #aaa;">Compound moves are filtered to only include those that reach states not achievable by single moves.</p>
+                <div style="max-height: 300px; overflow-y: auto;">
+                    ${compoundMoves.map((move, i) => `
+                        <div style="margin: 10px 0; padding: 10px; background: #2a2a3e; border-radius: 5px;">
+                            <strong>Compound Move ${i + 1}:</strong><br>
+                            <strong>Pieces:</strong> ${move.pieces.join(', ')}<br>
+                            <strong>Direction:</strong> [${move.direction.join(', ')}]<br>
+                            <strong>From:</strong> ${move.fromPositions.map(p => `(${p.x},${p.y}${firstState.is3D ? `,${p.z}` : ''})`).join(', ')}<br>
+                            <strong>To:</strong> ${move.toPositions.map(p => `(${p.x},${p.y}${firstState.is3D ? `,${p.z}` : ''})`).join(', ')}
+                        </div>
+                    `).join('')}
+                </div>
+                <button onclick="this.parentElement.remove()" style="margin-top: 10px; padding: 8px 16px; background: #4488ff; color: white; border: none; border-radius: 5px; cursor: pointer;">Close</button>
+            `;
+            
+            document.body.appendChild(results);
+        }
+
         // Graph Export/Import Functions
         function exportGraphForCUDA() {
             if (!currentGraph || !visualizer) {
@@ -1433,6 +2289,7 @@
             }
             
             const nodeCount = currentGraph.getStateCount();
+            const treatShapesAsUnique = currentGraph.treatShapesAsUnique || false;
             
             // Get current state data
             const states = [];
@@ -1445,7 +2302,7 @@
                     height: state.height,
                     depth: state.depth || 1,
                     is3D: state.is3D || false,
-                    hash: state.getHash(),
+                    hash: state.getHash(treatShapesAsUnique),
                     isWinning: state.isWinning()
                 });
             }
@@ -1469,10 +2326,12 @@
                 edges: edges,
                 positions: positions,
                 layout_params: layoutParams,
+                treatShapesAsUnique: treatShapesAsUnique,
                 metadata: {
                     node_count: nodeCount,
                     edge_count: currentGraph.edges.length,
-                    exported_at: new Date().toISOString()
+                    exported_at: new Date().toISOString(),
+                    version: '1.1'
                 }
             };
             
@@ -1516,10 +2375,17 @@
                             const importedGraph = new StateSpaceGraph();
                             importedGraph.stateList = states;
                             
-                            // Rebuild the states map with state objects
+                            // Set the treatShapesAsUnique parameter from imported data
+                            const treatShapesAsUnique = data.treatShapesAsUnique || false;
+                            importedGraph.treatShapesAsUnique = treatShapesAsUnique;
+                            
+                            // Update the checkbox to match the imported setting
+                            document.getElementById('uniqueShapesCheckbox').checked = treatShapesAsUnique;
+                            
+                            // Rebuild the states map with state objects using correct hash method
                             for (let i = 0; i < states.length; i++) {
                                 const state = states[i];
-                                const hash = state.getHash();
+                                const hash = state.getHash(treatShapesAsUnique);
                                 importedGraph.states.set(hash, {
                                     state: state,
                                     id: i,
@@ -1533,8 +2399,8 @@
                             for (const edge of data.edges) {
                                 const fromState = states[edge.from];
                                 const toState = states[edge.to];
-                                const fromHash = fromState.getHash();
-                                const toHash = toState.getHash();
+                                const fromHash = fromState.getHash(treatShapesAsUnique);
+                                const toHash = toState.getHash(treatShapesAsUnique);
                                 
                                 const fromData = importedGraph.states.get(fromHash);
                                 const toData = importedGraph.states.get(toHash);
