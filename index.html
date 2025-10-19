@@ -543,15 +543,15 @@
                 </label>
                 <label style="color: #aaa;">
                     Width: 
-                    <input type="number" id="boardWidth" min="2" max="8" value="4" style="width: 50px; margin-left: 5px; padding: 4px; background: #2a2a3e; border: 1px solid #4488ff; color: white; border-radius: 3px;">
+                    <input type="number" id="boardWidth" min="2" max="15" value="4" style="width: 50px; margin-left: 5px; padding: 4px; background: #2a2a3e; border: 1px solid #4488ff; color: white; border-radius: 3px;">
                 </label>
                 <label style="color: #aaa;">
                     Height: 
-                    <input type="number" id="boardHeight" min="2" max="10" value="5" style="width: 50px; margin-left: 5px; padding: 4px; background: #2a2a3e; border: 1px solid #4488ff; color: white; border-radius: 3px;">
+                    <input type="number" id="boardHeight" min="2" max="15" value="5" style="width: 50px; margin-left: 5px; padding: 4px; background: #2a2a3e; border: 1px solid #4488ff; color: white; border-radius: 3px;">
                 </label>
                 <label style="color: #aaa;" id="depthLabel" class="hidden">
                     Depth: 
-                    <input type="number" id="boardDepth" min="2" max="6" value="3" style="width: 50px; margin-left: 5px; padding: 4px; background: #2a2a3e; border: 1px solid #4488ff; color: white; border-radius: 3px;">
+                    <input type="number" id="boardDepth" min="2" max="15" value="3" style="width: 50px; margin-left: 5px; padding: 4px; background: #2a2a3e; border: 1px solid #4488ff; color: white; border-radius: 3px;">
                 </label>
                 <button class="palette-piece" onclick="updateBoardSize()" style="padding: 4px 12px; margin: 0;">Apply Size</button>
             </div>
@@ -580,10 +580,15 @@
                     <div class="visual-piece horizontal-piece" onclick="addPieceToBoard(2, 1)" title="Horizontal 2×1"></div>
                     <div class="visual-piece small-piece" onclick="addPieceToBoard(1, 1)" title="Small 1×1"></div>
                     <div class="visual-piece" onclick="toggleDrawMode()" id="drawModeBtn" title="Draw Custom Shape" style="width: 60px; height: 60px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); font-size: 32px;">✏</div>
+                    <div class="visual-piece" onclick="toggleForbiddenMode()" id="forbiddenModeBtn" title="Mark Forbidden Cells" style="width: 60px; height: 60px; background: linear-gradient(135deg, #ff6b6b 0%, #ee5a24 100%); font-size: 24px; display: flex; align-items: center; justify-content: center;">🚫</div>
                 </div>
                 <div id="drawModeInfo" style="display: none; text-align: center; margin-top: 10px; padding: 8px; background: #667eea; border-radius: 5px; color: white; font-size: 12px;">
                     <strong>Draw Mode Active:</strong> Click empty cells to draw shape. Click again to finish.<br>
                     <span style="font-size: 10px; opacity: 0.9;">Tip: Only the cells you click are solid. Empty space inside shapes won't block other pieces.</span>
+                </div>
+                <div id="forbiddenModeInfo" style="display: none; text-align: center; margin-top: 10px; padding: 8px; background: #ff6b6b; border-radius: 5px; color: white; font-size: 12px;">
+                    <strong>Forbidden Mode Active:</strong> Click and drag over cells to mark them as forbidden. Pieces cannot move to forbidden cells.<br>
+                    <span style="font-size: 10px; opacity: 0.9;">Forbidden cells will appear blacked out in the board state display.</span>
                 </div>
             </div>
             
@@ -650,43 +655,30 @@
                     Treat same-shaped pieces as unique
                 </label>
             </div>
-            
-            <hr style="margin: 10px 0;">
-            
-            <div class="info-text">
-                <strong>Graph Export/Import</strong>
-            </div>
+            <div style="height: 10px;"></div>
             <button id="exportCudaBtn">Export Graph with Layout</button>
             <button id="importCudaBtn">Import Graph Layout</button>
-            
-            <div style="margin-top: 10px;">
-                <button id="debugCompoundBtn" onclick="debugCompoundMoves()">Debug Compound Moves</button>
-            </div>
-            
-            <div style="margin-top: 10px;">
+            <div style="margin-top: 10px; font-size: 12px;">
                 <label style="display: flex; align-items: center; cursor: pointer;">
                     <input type="checkbox" id="showNodesToggle" style="margin-right: 8px; cursor: pointer;">
                     <span>Show All Nodes</span>
                 </label>
             </div>
-            
-            <div class="slider-container" style="margin-top: 10px;">
-                <div class="slider-label">
-                    <span>Symmetry Strength</span>
-                    <span class="slider-value" id="symmetryStrengthValue">0.0</span>
-                </div>
-                <input type="range" id="symmetryStrengthSlider" min="0.0" max="1.0" step="0.05" value="0.0">
-                <div style="font-size: 10px; color: #888; margin-top: 2px;">
-                    Visual layout only (0 = disabled)
-                </div>
-            </div>
-            
             <hr>
-            
             <div class="collapsible" id="paramsToggle">
-                <strong>CUDA-Style Force Parameters</strong>
+                <strong>Force Parameters</strong>
             </div>
             <div class="collapsible-content" id="paramsContent">
+                <div class="slider-container" style="margin-top: 10px;">
+                    <div class="slider-label">
+                        <span>Symmetry Strength</span>
+                        <span class="slider-value" id="symmetryStrengthValue">0.5</span>
+                    </div>
+                    <input type="range" id="symmetryStrengthSlider" min="0.0" max="1.0" step="0.05" value="0.5">
+                    <div style="font-size: 10px; color: #888; margin-top: 2px;">
+                        Enforces symmetries (0 = disabled)
+                    </div>
+                </div>
                 <div class="slider-container">
                     <div class="slider-label">
                         <span>Repulsion Scale</span>
@@ -871,8 +863,8 @@
             iterations: 1000,            // More iterations for smoother layout
             initialRadius: 200,          // Larger initial distribution
             sampleSize: 150,             // More samples for better repulsion
-            enforceSymmetry: false,      // Enforce graph symmetries (visual layout only)
-            symmetryStrength: 0.0        // How strongly to enforce symmetries (0-1, 0=disabled)
+            enforceSymmetry: true,       // Enforce graph symmetries (visual layout only)
+            symmetryStrength: 0.5        // How strongly to enforce symmetries (0-1, 0=disabled)
         };
 
         // Custom starting state
@@ -981,8 +973,8 @@
                 iterations: 1000,
                 initialRadius: 200,
                 sampleSize: 150,
-                enforceSymmetry: false,
-                symmetryStrength: 0.0
+                enforceSymmetry: true,
+                symmetryStrength: 0.5
             };
 
             // Update sliders
@@ -1007,7 +999,7 @@
             document.getElementById('iterationsValue').textContent = 1000;
             document.getElementById('radiusValue').textContent = 200;
             document.getElementById('sampleValue').textContent = 150;
-            document.getElementById('symmetryStrengthValue').textContent = 0.0;
+            document.getElementById('symmetryStrengthValue').textContent = 0.5;
         }
 
         function applyParameters() {
@@ -1132,13 +1124,13 @@
             const newHeight = parseInt(document.getElementById('boardHeight').value);
             const newDepth = is3D ? parseInt(document.getElementById('boardDepth').value) : 1;
             
-            if (newWidth < 2 || newWidth > 8 || newHeight < 2 || newHeight > 10) {
-                alert('Board width must be 2-8 and height must be 2-10');
+            if (newWidth < 2 || newWidth > 20 || newHeight < 2 || newHeight > 20) {
+                alert('Board width must be 2-20 and height must be 2-20');
                 return;
             }
             
-            if (is3D && (newDepth < 2 || newDepth > 6)) {
-                alert('Board depth must be 2-6');
+            if (is3D && (newDepth < 2 || newDepth > 20)) {
+                alert('Board depth must be 2-20');
                 return;
             }
             
@@ -1190,12 +1182,32 @@
         let drawStartCell = null;
         let drawModeAction = 'add'; // 'add' or 'remove'
         
+        // Forbidden mode state
+        let forbiddenMode = false;
+        let forbiddenCells = [];
+        let isDraggingInForbiddenMode = false;
+        let forbiddenStartCell = null;
+        let forbiddenModeAction = 'add'; // 'add' or 'remove'
+        
         function toggleDrawMode() {
             drawMode = !drawMode;
             const btn = document.getElementById('drawModeBtn');
             const info = document.getElementById('drawModeInfo');
             
             if (drawMode) {
+                // Turn off forbidden mode if it's active
+                if (forbiddenMode) {
+                    forbiddenMode = false;
+                    const forbiddenBtn = document.getElementById('forbiddenModeBtn');
+                    const forbiddenInfo = document.getElementById('forbiddenModeInfo');
+                    forbiddenBtn.style.background = 'linear-gradient(135deg, #ff6b6b 0%, #ee5a24 100%)';
+                    forbiddenBtn.textContent = '🚫';
+                    forbiddenInfo.style.display = 'none';
+                    // Clear any ongoing forbidden mode dragging
+                    isDraggingInForbiddenMode = false;
+                    forbiddenStartCell = null;
+                }
+                
                 btn.style.background = '#ff4444'; // Red when active
                 btn.textContent = '✓';
                 info.style.display = 'block';
@@ -1213,11 +1225,51 @@
             renderEditorBoard();
         }
         
+        function toggleForbiddenMode() {
+            forbiddenMode = !forbiddenMode;
+            const btn = document.getElementById('forbiddenModeBtn');
+            const info = document.getElementById('forbiddenModeInfo');
+            
+            if (forbiddenMode) {
+                // Turn off draw mode if it's active
+                if (drawMode) {
+                    drawMode = false;
+                    const drawBtn = document.getElementById('drawModeBtn');
+                    const drawInfo = document.getElementById('drawModeInfo');
+                    drawBtn.style.background = 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)';
+                    drawBtn.textContent = '✏';
+                    drawInfo.style.display = 'none';
+                    // Finish any ongoing drawing
+                    if (drawingCells.length > 0) {
+                        finishDrawing();
+                    }
+                    drawingCells = [];
+                }
+                
+                btn.style.background = '#ff4444'; // Red when active
+                btn.textContent = '✓';
+                info.style.display = 'block';
+            } else {
+                // Clear any ongoing forbidden mode dragging
+                isDraggingInForbiddenMode = false;
+                forbiddenStartCell = null;
+                
+                btn.style.background = 'linear-gradient(135deg, #ff6b6b 0%, #ee5a24 100%)';
+                btn.textContent = '🚫';
+                info.style.display = 'none';
+            }
+            renderEditorBoard();
+        }
+        
         // Add global mouse up handler for draw mode
         document.addEventListener('mouseup', () => {
             if (isDraggingInDrawMode) {
                 isDraggingInDrawMode = false;
                 drawStartCell = null;
+            }
+            if (isDraggingInForbiddenMode) {
+                isDraggingInForbiddenMode = false;
+                forbiddenStartCell = null;
             }
         });
         
@@ -1336,6 +1388,65 @@
                         });
                     }
                     
+                    // Add click and drag handlers for forbidden mode
+                    if (forbiddenMode) {
+                        cell.style.cursor = 'crosshair';
+                        
+                        // Mouse down - start dragging
+                        cell.addEventListener('mousedown', (e) => {
+                            e.stopPropagation();
+                            e.preventDefault();
+                            isDraggingInForbiddenMode = true;
+                            forbiddenStartCell = {x: parseInt(cell.dataset.x), y: parseInt(cell.dataset.y)};
+                            
+                            const cellX = parseInt(cell.dataset.x);
+                            const cellY = parseInt(cell.dataset.y);
+                            const cellZ = is3D ? currentViewLayer : 0;
+                            
+                            // Check if cell is occupied by a piece
+                            if (isPieceAt(cellX, cellY, cellZ)) {
+                                isDraggingInForbiddenMode = false;
+                                forbiddenStartCell = null;
+                                return; // Can't mark occupied cells as forbidden
+                            }
+                            
+                            // Toggle cell in forbidden and set action mode
+                            const idx = forbiddenCells.findIndex(c => c.x === cellX && c.y === cellY && c.z === cellZ);
+                            if (idx >= 0) {
+                                forbiddenCells.splice(idx, 1);
+                                forbiddenModeAction = 'remove'; // Dragging will remove cells
+                            } else {
+                                forbiddenCells.push({x: cellX, y: cellY, z: cellZ});
+                                forbiddenModeAction = 'add'; // Dragging will add cells
+                            }
+                            renderEditorBoard();
+                        });
+                        
+                        // Mouse enter - continue dragging
+                        cell.addEventListener('mouseenter', (e) => {
+                            if (!isDraggingInForbiddenMode) return;
+                            
+                            const cellX = parseInt(cell.dataset.x);
+                            const cellY = parseInt(cell.dataset.y);
+                            const cellZ = is3D ? currentViewLayer : 0;
+                            
+                            // Check if cell is occupied by a piece
+                            if (isPieceAt(cellX, cellY, cellZ)) {
+                                return; // Can't mark occupied cells as forbidden
+                            }
+                            
+                            // Add or remove based on action mode
+                            const idx = forbiddenCells.findIndex(c => c.x === cellX && c.y === cellY && c.z === cellZ);
+                            if (forbiddenModeAction === 'add' && idx < 0) {
+                                forbiddenCells.push({x: cellX, y: cellY, z: cellZ});
+                                renderEditorBoard();
+                            } else if (forbiddenModeAction === 'remove' && idx >= 0) {
+                                forbiddenCells.splice(idx, 1);
+                                renderEditorBoard();
+                            }
+                        });
+                    }
+                    
                     grid.appendChild(cell);
                 }
             }
@@ -1361,7 +1472,33 @@
                     }
                 }
             }
-
+            
+            // Draw forbidden cells
+            for (const {x, y, z} of forbiddenCells) {
+                if (!is3D || z === currentViewLayer) {
+                    const forbiddenDiv = document.createElement('div');
+                    forbiddenDiv.style.cssText = `
+                        position: absolute;
+                        left: ${10 + x * 62}px;
+                        top: ${10 + y * 62}px;
+                        width: 60px;
+                        height: 60px;
+                        background: rgba(0, 0, 0, 0.8);
+                        border: 2px solid #ff4444;
+                        border-radius: 4px;
+                        z-index: 6;
+                        pointer-events: none;
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                        font-size: 20px;
+                        color: #ff4444;
+                    `;
+                    forbiddenDiv.textContent = '🚫';
+                    grid.appendChild(forbiddenDiv);
+                }
+            }
+            
             // Render blocks
             editorState.blocks.forEach(block => {
                 const blockZ = block.z || 0;
@@ -1703,6 +1840,11 @@
                     if (isPieceAt(cellX, cellY, cellZ, excludeId)) {
                         return false;
                     }
+                    
+                    // Check if cell is forbidden
+                    if (isCellForbidden(cellX, cellY, cellZ)) {
+                        return false;
+                    }
                 }
                 return true;
             } else {
@@ -1719,6 +1861,11 @@
                     for (let dy = 0; dy < height; dy++) {
                         for (let dx = 0; dx < width; dx++) {
                             if (isPieceAt(x + dx, y + dy, z + dz, excludeId)) {
+                                return false;
+                            }
+                            
+                            // Check if cell is forbidden
+                            if (isCellForbidden(x + dx, y + dy, z + dz)) {
                                 return false;
                             }
                         }
@@ -1768,6 +1915,13 @@
                 }
             }
             return false;
+        }
+        
+        function isCellForbidden(x, y, z) {
+            z = z || 0; // Default Z for 2D
+            return forbiddenCells.some(cell => 
+                cell.x === x && cell.y === y && cell.z === z
+            );
         }
         
         // Get normalized shape signature for consistent coloring
@@ -1866,6 +2020,7 @@
         function clearBoard() {
             editorState = new KlotskiState([], boardWidth, boardHeight, boardDepth);
             nextBlockId = 0;
+            forbiddenCells = [];
             renderEditorBoard();
         }
 
@@ -1973,7 +2128,7 @@
                 return;
             }
             // Create properly dimensioned state (including depth for 3D)
-            customStartState = new KlotskiState(editorState.blocks, boardWidth, boardHeight, boardDepth);
+            customStartState = new KlotskiState(editorState.blocks, boardWidth, boardHeight, boardDepth, forbiddenCells);
             closeEditor();
             const dimStr = is3D ? `${boardWidth}×${boardHeight}×${boardDepth}` : `${boardWidth}×${boardHeight}`;
             console.log(`Custom board set! Size: ${dimStr}, Blocks: ${editorState.blocks.length}, is3D: ${customStartState.is3D}`);

@@ -1,7 +1,7 @@
 // Klotski Game Logic and State Management
 
 class KlotskiState {
-    constructor(blocks, width = 4, height = 5, depth = 1) {
+    constructor(blocks, width = 4, height = 5, depth = 1, forbiddenCells = []) {
         // blocks: array of {id, x, y, z, width, height, depth} for rectangles
         //         OR {id, x, y, z, cells: [[dx,dy,dz], ...]} for custom shapes
         //         where cells are relative to (x,y,z) origin
@@ -11,6 +11,7 @@ class KlotskiState {
         this.height = height;
         this.depth = depth || 1; // depth 1 means 2D puzzle
         this.is3D = depth > 1;
+        this.forbiddenCells = forbiddenCells.map(c => ({...c})); // Array of {x, y, z} positions
         
         // Spatial hash for O(1) occupancy tests: cell -> pieceId
         this.spatialHash = new Map();
@@ -57,6 +58,13 @@ class KlotskiState {
     isCellOccupied(x, y, z) {
         const key = `${x},${y},${z}`;
         return this.spatialHash.has(key);
+    }
+    
+    // Check if a cell is forbidden
+    isCellForbidden(x, y, z) {
+        return this.forbiddenCells.some(cell => 
+            cell.x === x && cell.y === y && cell.z === (z || 0)
+        );
     }
     
     // Get piece ID occupying a cell, or null if empty
@@ -293,6 +301,11 @@ class KlotskiState {
                 return false;
             }
 
+            // Check if target cell is forbidden
+            if (this.isCellForbidden(newCellX, newCellY, newCellZ)) {
+                return false;
+            }
+
             // Check collision with other blocks
             if (this.isOccupied(newCellX, newCellY, newCellZ, blockId)) {
                 return false;
@@ -369,7 +382,7 @@ class KlotskiState {
             }
             return {...b};
         });
-        return new KlotskiState(newBlocks, this.width, this.height, this.depth);
+        return new KlotskiState(newBlocks, this.width, this.height, this.depth, this.forbiddenCells);
     }
 
     // Check if this is a winning state (big block at exit position)
@@ -379,7 +392,7 @@ class KlotskiState {
     }
 
     clone() {
-        return new KlotskiState(this.blocks, this.width, this.height, this.depth);
+        return new KlotskiState(this.blocks, this.width, this.height, this.depth, this.forbiddenCells);
     }
     
     // ===== COMPOUND MOVE DETECTION =====
@@ -692,6 +705,11 @@ class KlotskiState {
                     return false;
                 }
                 
+                // Check if target cell is forbidden
+                if (this.isCellForbidden(targetX, targetY, targetZ)) {
+                    return false;
+                }
+                
                 // Check collision with non-moving pieces
                 const key = `${targetX},${targetY},${targetZ}`;
                 if (tempHash.has(key)) {
@@ -718,7 +736,7 @@ class KlotskiState {
             return {...block};
         });
         
-        return new KlotskiState(newBlocks, this.width, this.height, this.depth);
+        return new KlotskiState(newBlocks, this.width, this.height, this.depth, this.forbiddenCells);
     }
 }
 

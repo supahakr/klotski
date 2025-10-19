@@ -766,7 +766,19 @@ class GraphVisualizer {
                 for (let x = 0; x < boardWidth; x++) {
                     if (!occupiedCells.has(`${x},${y}`)) {
                         const cell = document.createElement('div');
-                        cell.style.cssText = `position: absolute; left: ${x * 27}px; top: ${y * 27}px; width: 25px; height: 25px; background: #1a1a2e; border: 1px solid #2a2a3e; border-radius: 2px;`;
+                        // Check if this cell is forbidden
+                        const isForbidden = state.forbiddenCells && state.forbiddenCells.some(fc => 
+                            fc.x === x && fc.y === y && fc.z === layerZ
+                        );
+                        
+                        if (isForbidden) {
+                            // Forbidden cell - blacked out
+                            cell.style.cssText = `position: absolute; left: ${x * 27}px; top: ${y * 27}px; width: 25px; height: 25px; background: #000000; border: 1px solid #ff4444; border-radius: 2px; display: flex; align-items: center; justify-content: center; font-size: 12px; color: #ff4444;`;
+                            cell.textContent = '🚫';
+                        } else {
+                            // Normal empty cell
+                            cell.style.cssText = `position: absolute; left: ${x * 27}px; top: ${y * 27}px; width: 25px; height: 25px; background: #1a1a2e; border: 1px solid #2a2a3e; border-radius: 2px;`;
+                        }
                         boardContainer.appendChild(cell);
                     }
                 }
