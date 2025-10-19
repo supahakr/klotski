@@ -514,7 +514,7 @@ class KlotskiState {
         
         for (const move of singleMoves) {
             const newState = this.applyMove(move);
-            const hash = newState.getHash();
+            const hash = newState.getHash(this.treatShapesAsUnique);
             singleMoveStates.add(hash);
         }
         
@@ -646,7 +646,7 @@ class KlotskiState {
                         
                         // Check if this compound move reaches a new state
                         const newState = this.applyCompoundMove(compoundMove);
-                        const newHash = newState.getHash();
+                        const newHash = newState.getHash(this.treatShapesAsUnique);
                         
                         if (!singleMoveStates.has(newHash)) {
                             moves.push(compoundMove);
@@ -877,7 +877,7 @@ class StateSpaceGraph {
         while (queue.length > 0) {
             const currentId = queue.shift();
             const currentLevel = levels[currentId];
-            const hash = this.stateList[currentId].getHash();
+            const hash = this.stateList[currentId].getHash(this.treatShapesAsUnique);
             const neighbors = this.states.get(hash).neighbors;
 
             for (const neighborId of neighbors) {
