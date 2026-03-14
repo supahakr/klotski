@@ -1,5 +1,432 @@
 // Klotski Game Logic and State Management
 
+// Triangular Lattice System - Simple Row/Column Based
+// Each cell is identified by (row, col), where:
+// - row: vertical row index (0, 1, 2, ...)
+// - col: horizontal column index (0, 1, 2, ...)
+// - Triangles alternate orientation: even cells point up (△), odd cells point down (▽)
+// - Parity = (row + col) % 2: 0 = up-pointing, 1 = down-pointing
+
+class TriGrid {
+    constructor(cellSize = 40) {
+        this.cellSize = cellSize;
+        // Height of equilateral triangle
+        this.height = cellSize * Math.sqrt(3) / 2;
+    }
+    
+    // Convert grid coordinates (row, col) to pixel coordinates (x, y)
+    // Returns the top-left corner of the triangle's bounding box
+    gridToPixel(row, col) {
+        const x = col * (this.cellSize / 2);
+        const y = row * this.height;
+        return { x, y };
+    }
+    
+    // Convert pixel coordinates to grid coordinates
+    // Returns the triangle cell at that pixel location
+    pixelToGrid(pixelX, pixelY) {
+        // Approximate row and column
+        const row = Math.floor(pixelY / this.height);
+        const col = Math.floor(pixelX / (this.cellSize / 2));
+        
+        // Get local coordinates within the cell
+        const { x: cellX, y: cellY } = this.gridToPixel(row, col);
+        const localX = pixelX - cellX;
+        const localY = pixelY - cellY;
+        
+        // Determine which triangle we're in based on parity and position
+        const parity = this.getParity(row, col);
+        const halfWidth = this.cellSize / 2;
+        
+        // Check if we're in this cell or need to adjust
+        if (parity === 0) { // Up-pointing triangle
+            // Check if we're below the hypotenuse
+            if (localY > this.height * (1 - localX / halfWidth)) {
+                return { row: row + 1, col: col };
+            }
+            if (localX > halfWidth && localY > this.height * (localX / halfWidth - 1)) {
+                return { row: row + 1, col: col + 1 };
+            }
+        } else { // Down-pointing triangle
+            // Check if we're above the hypotenuse
+            if (localY < this.height * (localX / halfWidth)) {
+                return { row: row, col: col - 1 };
+            }
+            if (localX > halfWidth && localY < this.height * (2 - localX / halfWidth)) {
+                return { row: row, col: col + 1 };
+            }
+        }
+        
+        return { row, col };
+    }
+    
+    // Get triangle parity (0 = up △, 1 = down ▽)
+    getParity(row, col) {
+        return (row + col) % 2;
+    }
+    
+    // Get vertices of a triangle for rendering
+    getTriangleVertices(row, col) {
+        const { x, y } = this.gridToPixel(row, col);
+        const parity = this.getParity(row, col);
+        const halfWidth = this.cellSize / 2;
+        
+        if (parity === 0) { // Up-pointing △
+            return [
+                { x: x, y: y + this.height },           // Bottom-left
+                { x: x + halfWidth, y: y },             // Top
+                { x: x + this.cellSize, y: y + this.height }  // Bottom-right
+            ];
+        } else { // Down-pointing ▽
+            return [
+                { x: x, y: y },                         // Top-left
+                { x: x + halfWidth, y: y + this.height },      // Bottom
+                { x: x + this.cellSize, y: y }          // Top-right
+            ];
+        }
+    }
+    
+    // Get adjacent cells (neighbors that share an edge)
+    getAdjacentCells(row, col) {
+        const parity = this.getParity(row, col);
+        
+        if (parity === 0) { // Up-pointing △
+            return [
+                { row: row, col: col - 2 },      // Left (same orientation)
+                { row: row, col: col + 2 },      // Right (same orientation)
+                { row: row - 1, col: col - 1 },  // Top-left (opposite)
+                { row: row - 1, col: col + 1 },  // Top-right (opposite)
+                { row: row + 1, col: col - 1 },  // Bottom-left (opposite)
+                { row: row + 1, col: col + 1 }   // Bottom-right (opposite)
+            ];
+        } else { // Down-pointing ▽
+            return [
+                { row: row, col: col - 2 },      // Left (same orientation)
+                { row: row, col: col + 2 },      // Right (same orientation)
+                { row: row - 1, col: col - 1 },  // Top-left (opposite)
+                { row: row - 1, col: col + 1 },  // Top-right (opposite)
+                { row: row + 1, col: col - 1 },  // Bottom-left (opposite)
+                { row: row + 1, col: col + 1 }   // Bottom-right (opposite)
+            ];
+        }
+    }
+    
+    // Get move directions (only to cells with same parity)
+    getMoveDirections() {
+        return [
+            { row: 0, col: 2, name: 'right' },
+            { row: 0, col: -2, name: 'left' },
+            { row: 2, col: 0, name: 'down' },
+            { row: -2, col: 0, name: 'up' },
+            { row: 2, col: 2, name: 'down-right' },
+            { row: 2, col: -2, name: 'down-left' },
+            { row: -2, col: 2, name: 'up-right' },
+            { row: -2, col: -2, name: 'up-left' }
+        ];
+    }
+}
+
+// Triangular Board Representation
+class TriBoard {
+    constructor(rows, cols, customCells = null, cellSize = 40, shape = 'rhombus') {
+        this.rows = rows;
+        this.cols = cols;
+        this.grid = new TriGrid(cellSize);
+        this.shape = shape;
+        
+        // Default board shape
+        if (customCells === null) {
+            this.validCells = new Set();
+            
+            if (shape === 'rhombus') {
+                // Create a rhombus with flush edges
+                // For flush edges, we need ODD-numbered rows of triangles: 1, 3, 5, ..., 5, 3, 1
+                // Key insight: each row should have cells where only ONE parity dominates
+                // to create a flush edge pattern
+                const size = Math.floor(rows / 2); // Rhombus "radius"
+                
+                for (let row = 0; row < rows; row++) {
+                    // Calculate distance from center
+                    const distFromCenter = Math.abs(row - size);
+                    
+                    // Number of triangles in this row (odd numbers: 1, 3, 5, ...)
+                    const triangleCount = 2 * (size - distFromCenter) + 1;
+                    
+                    // Only include rows that are within the rhombus
+                    if (triangleCount > 0) {
+                        // Determine the parity for this row (alternates to create flush edges)
+                        const rowParity = row % 2;
+                        
+                        // Center the triangles horizontally
+                        const centerCol = size;
+                        const halfCount = Math.floor(triangleCount / 2);
+                        
+                        // Add cells with the correct parity for this row
+                        for (let i = -halfCount; i <= halfCount; i++) {
+                            const col = centerCol + i;
+                            // Only add if this cell has the correct parity for flush edges
+                            if ((row + col) % 2 === rowParity) {
+                                this.validCells.add(`${row},${col}`);
+                            }
+                        }
+                    }
+                }
+            } else {
+                // Rectangular board: all cells
+                for (let row = 0; row < rows; row++) {
+                    for (let col = 0; col < cols; col++) {
+                        this.validCells.add(`${row},${col}`);
+                    }
+                }
+            }
+        } else {
+            this.validCells = customCells;
+        }
+    }
+    
+    // Static method to create a rhombus board
+    static createRhombus(size, cellSize = 40) {
+        // Create a rhombus with 'size' rows along each edge
+        return new TriBoard(size * 2, size * 2, null, cellSize, 'rhombus');
+    }
+    
+    // Check if a cell is on the board
+    contains(row, col) {
+        return this.validCells.has(`${row},${col}`);
+    }
+    
+    // Get all valid cells
+    getAllCells() {
+        return Array.from(this.validCells).map(cell => {
+            const [row, col] = cell.split(',').map(Number);
+            return { row, col };
+        });
+    }
+    
+    // Get pixel bounds for rendering
+    getPixelBounds() {
+        const cells = this.getAllCells();
+        if (cells.length === 0) return { minX: 0, maxX: 0, minY: 0, maxY: 0 };
+        
+        let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+        
+        for (const { row, col } of cells) {
+            const vertices = this.grid.getTriangleVertices(row, col);
+            for (const vertex of vertices) {
+                minX = Math.min(minX, vertex.x);
+                maxX = Math.max(maxX, vertex.x);
+                minY = Math.min(minY, vertex.y);
+                maxY = Math.max(maxY, vertex.y);
+            }
+        }
+        
+        return { minX, maxX, minY, maxY };
+    }
+}
+
+// Triangular Piece Representation (Polyiamond)
+class TriPiece {
+    constructor(id, offsets, name = '') {
+        this.id = id;
+        this.name = name;
+        // Offsets store the RELATIVE parity of each triangle
+        // Each offset is [drow, dcol] where the piece occupies (row0+drow, col0+dcol)
+        // The relative parity is (drow + dcol) % 2: 
+        //   0 = same orientation as anchor, 1 = opposite orientation
+        this.offsets = offsets.map(([drow, dcol]) => {
+            const relativeParity = (drow + dcol) % 2;
+            return { drow, dcol, relativeParity };
+        });
+    }
+    
+    // Get all cells occupied by this piece at position (row0, col0, baseParity)
+    // baseParity determines the orientation of the anchor triangle
+    getOccupiedCells(row0, col0, baseParity = 0) {
+        return this.offsets.map(({ drow, dcol, relativeParity }) => {
+            const actualRow = row0 + drow;
+            const actualCol = col0 + dcol;
+            // The actual parity of this triangle is baseParity XOR relativeParity
+            const actualParity = (baseParity + relativeParity) % 2;
+            return {
+                row: actualRow,
+                col: actualCol,
+                parity: actualParity
+            };
+        });
+    }
+    
+    // Check if this piece can be placed at (row0, col0, baseParity) on the given board
+    canPlaceAt(row0, col0, baseParity, board, occupiedCells, excludeId = -1) {
+        const cells = this.getOccupiedCells(row0, col0, baseParity);
+        
+        for (const { row, col, parity } of cells) {
+            // Check if cell is on the board
+            if (!board.contains(row, col)) {
+                return false;
+            }
+            
+            // CRITICAL: Check if the triangle's parity matches the grid cell's parity
+            // The grid determines which orientation (△ or ▽) exists at (row, col)
+            const gridParity = board.grid.getParity(row, col);
+            if (parity !== gridParity) {
+                return false; // Can't place △ where ▽ should be (or vice versa)
+            }
+            
+            // Check if cell is already occupied by another piece
+            const cellKey = `${row},${col},${parity}`;
+            const occupyingPiece = occupiedCells.get(cellKey);
+            if (occupyingPiece !== undefined && occupyingPiece !== excludeId) {
+                return false;
+            }
+        }
+        
+        return true;
+    }
+    
+    // Get the bounding box of this piece
+    getBounds() {
+        if (this.offsets.length === 0) return { minRow: 0, maxRow: 0, minCol: 0, maxCol: 0 };
+        
+        const rows = this.offsets.map(({ drow }) => drow);
+        const cols = this.offsets.map(({ dcol }) => dcol);
+        
+        return {
+            minRow: Math.min(...rows),
+            maxRow: Math.max(...rows),
+            minCol: Math.min(...cols),
+            maxCol: Math.max(...cols)
+        };
+    }
+}
+
+// Triangular State for triangular lattice puzzles
+class TriKlotskiState {
+    constructor(pieces, board, forbiddenCells = []) {
+        this.pieces = pieces.map(p => ({...p})); // Array of {id, row, col, baseParity, piece}
+        this.board = board;
+        this.forbiddenCells = forbiddenCells.map(c => ({...c})); // Array of {row, col}
+        this.grid = board.grid;
+        
+        // Spatial hash for O(1) occupancy tests: (row,col,parity) -> pieceId
+        this.spatialHash = new Map();
+        this.updateSpatialHash();
+    }
+    
+    // Update spatial hash for O(1) occupancy tests
+    updateSpatialHash() {
+        this.spatialHash.clear();
+        for (const pieceState of this.pieces) {
+            const cells = pieceState.piece.getOccupiedCells(pieceState.row, pieceState.col, pieceState.baseParity || 0);
+            for (const { row, col, parity } of cells) {
+                const key = `${row},${col},${parity}`;
+                this.spatialHash.set(key, pieceState.id);
+            }
+        }
+    }
+    
+    // Check if a cell is occupied
+    isCellOccupied(row, col) {
+        const key = `${row},${col}`;
+        return this.spatialHash.has(key);
+    }
+    
+    // Check if a cell is forbidden
+    isCellForbidden(row, col) {
+        return this.forbiddenCells.some(cell => 
+            cell.row === row && cell.col === col
+        );
+    }
+    
+    // Get piece ID occupying a cell, or null if empty
+    getPieceAtCell(row, col) {
+        const key = `${row},${col}`;
+        return this.spatialHash.get(key) || null;
+    }
+    
+    // Check if a piece can move to a new position
+    canMove(pieceId, newRow, newCol, newBaseParity = null) {
+        const pieceState = this.pieces.find(p => p.id === pieceId);
+        if (!pieceState) return false;
+        
+        // Use existing baseParity if not specified
+        const baseParity = newBaseParity !== null ? newBaseParity : (pieceState.baseParity || 0);
+        
+        // Check if the piece can be placed at the new position
+        return pieceState.piece.canPlaceAt(newRow, newCol, baseParity, this.board, this.spatialHash, pieceId);
+    }
+    
+    // Get all valid moves from current state
+    getValidMoves() {
+        const moves = [];
+        const directions = this.grid.getMoveDirections();
+        
+        for (const pieceState of this.pieces) {
+            for (const dir of directions) {
+                const newRow = pieceState.row + dir.row;
+                const newCol = pieceState.col + dir.col;
+                
+                if (this.canMove(pieceState.id, newRow, newCol)) {
+                    moves.push({
+                        type: 'single',
+                        pieceId: pieceState.id,
+                        fromRow: pieceState.row,
+                        fromCol: pieceState.col,
+                        toRow: newRow,
+                        toCol: newCol,
+                        direction: dir.name
+                    });
+                }
+            }
+        }
+        
+        return moves;
+    }
+    
+    // Apply a move and return new state
+    applyMove(move) {
+        const newPieces = this.pieces.map(p => {
+            if (p.id === move.pieceId) {
+                return {
+                    ...p,
+                    row: move.toRow,
+                    col: move.toCol
+                };
+            }
+            return {...p};
+        });
+        
+        return new TriKlotskiState(newPieces, this.board, this.forbiddenCells);
+    }
+    
+    // Get hash string for state comparison
+    getHash() {
+        const parts = [];
+        const sortedPieces = [...this.pieces].sort((a, b) => a.id - b.id);
+        
+        for (const pieceState of sortedPieces) {
+            const shape = this.getPieceShape(pieceState.piece);
+            parts.push(`${pieceState.id}[${shape}]:${pieceState.row},${pieceState.col}`);
+        }
+        
+        return parts.join('|');
+    }
+    
+    // Get normalized shape signature for a piece
+    getPieceShape(piece) {
+        const offsets = piece.offsets.map(({ drow, dcol }) => `${drow},${dcol}`);
+        return offsets.sort().join(';');
+    }
+    
+    // Check if this is a winning state (override in subclasses)
+    isWinning() {
+        return false; // Default: no winning condition
+    }
+    
+    clone() {
+        return new TriKlotskiState(this.pieces, this.board, this.forbiddenCells);
+    }
+}
+
 class KlotskiState {
     constructor(blocks, width = 4, height = 5, depth = 1, forbiddenCells = []) {
         // blocks: array of {id, x, y, z, width, height, depth} for rectangles
