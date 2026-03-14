@@ -280,6 +280,10 @@ class GraphVisualizer {
     }
 
     onClick(event) {
+        // If board state is open, don't deselect on background click
+        const boardElement = document.getElementById('boardState');
+        const boardIsOpen = boardElement && !boardElement.classList.contains('hidden');
+    
         if (this.hoveredNode >= 0) {
             // Clicking on a node - select it
             this.selectedNode = this.hoveredNode;
@@ -287,23 +291,17 @@ class GraphVisualizer {
             this.highlightConnectedEdges(this.selectedNode);
             this.displayStateInfo(this.selectedNode);
             this.displayBoardState(this.selectedNode);
-        } else {
-            // Clicking on background - deselect
+        } else if (!boardIsOpen) {
+            // Clicking on background - only deselect if board state is closed
             this.selectedNode = -1;
             this.updateNodeColors();
-            
+    
             // Clear highlighted edges
             if (this.highlightedEdges) {
                 this.scene.remove(this.highlightedEdges);
                 this.highlightedEdges.geometry.dispose();
                 this.highlightedEdges.material.dispose();
                 this.highlightedEdges = null;
-            }
-            
-            // Hide board state panel
-            const boardElement = document.getElementById('boardState');
-            if (boardElement) {
-                boardElement.classList.add('hidden');
             }
         }
     }
@@ -643,9 +641,20 @@ class GraphVisualizer {
         // Show the panel
         boardElement.classList.remove('hidden');
         
+        // Check if this is a triangular state
+        const isTriangular = state.pieces && state.board && state.grid;
+        
+        if (isTriangular) {
+            this.displayTriangularBoardState(state, contentElement, nodeId);
+            return;
+        }
+        
         // Use actual board dimensions
         const boardWidth = state.width || 4;
         const boardHeight = state.height || 5;
+        
+        // Clear any inline styles (sizing now handled by CSS)
+        contentElement.style.cssText = '';
         
         // Get normalized shape signature for consistent coloring
         const getShapeSignature = (block) => {
@@ -1010,9 +1019,9 @@ class GraphVisualizer {
         }
         
         const info = document.createElement('div');
-        info.style.cssText = 'text-align: center; margin-top: 6px; font-size: 10px; color: #888;';
+        info.style.cssText = 'text-align: center; white-space: pre-line; margin-top: 6px; font-size: 10px; color: #888;';
         const dimensionInfo = state.is3D ? `${boardWidth}×${boardHeight}×${state.depth}` : `${boardWidth}×${boardHeight}`;
-        info.textContent = `State #${nodeId} (${dimensionInfo}) - Drag pieces to navigate`;
+        info.textContent = `State #${nodeId} (${dimensionInfo})\nDrag pieces to navigate`;
         
         container.appendChild(info);
         
@@ -1021,11 +1030,479 @@ class GraphVisualizer {
             const movementInfo = document.createElement('div');
             movementInfo.style.cssText = 'text-align: center; margin-top: 3px; font-size: 9px; color: #4488ff;';
             const layers = new Set(state.blocks.map(b => b.z || 0));
-            movementInfo.textContent = `Pieces can move between layers via dragging in X, Y directions`;
+            movementInfo.textContent = ``;
             container.appendChild(movementInfo);
         }
         
         contentElement.appendChild(container);
+    }
+
+    displayTriangularBoardState(state, contentElement, currentNodeId) {
+        // Clear previous content
+        contentElement.innerHTML = '';
+        
+        // Calculate board dimensions and scale to fit nicely (like square grid)
+        const bounds = state.board.getPixelBounds();
+        const boundsWidth = bounds.maxX - bounds.minX;
+        const boundsHeight = bounds.maxY - bounds.minY;
+        
+        // Target size for board display (similar to square grid's 27 * boardSize)
+        const maxDisplaySize = 400; // Max pixels for the larger dimension
+        const displayScale = Math.min(
+            maxDisplaySize / Math.max(boundsWidth, boundsHeight),
+            1.0 // Don't scale up, only down
+        );
+        
+        const boardWidth = boundsWidth * displayScale;
+        const boardHeight = boundsHeight * displayScale;
+        const cellSize = state.grid.cellSize * displayScale; // Scale the grid's native cellSize
+        const triHeight = cellSize * Math.sqrt(3) / 2; // Actual equilateral triangle height
+        
+        const container = document.createElement('div');
+        container.style.cssText = `
+            background: #1a1a2e;
+            border-radius: 8px;
+            padding: 15px;
+            color: white;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-height: calc(100vh - 150px);
+            overflow-y: auto;
+            width: fit-content;
+            max-width: calc(100vw - 100px);
+        `;
+        
+        // No title needed - already shown as "Board State" in parent
+        
+        // Board dimensions
+        const boardInfo = document.createElement('div');
+        const shapeName = state.board.shape || 'rhombus';
+        boardInfo.textContent = `Board: ${state.board.rows}×${state.board.cols} ${shapeName}`;
+        boardInfo.style.cssText = 'margin-bottom: 10px; color: #aaa; font-size: 12px;';
+        container.appendChild(boardInfo);
+        
+        // Create triangular board visualization
+        const boardContainer = document.createElement('div');
+        boardContainer.style.cssText = `
+            position: relative;
+            width: ${boardWidth}px;
+            height: ${boardHeight}px;
+            background: #0f0f1e;
+            border-radius: 5px;
+            margin: 10px auto;
+            overflow: visible;
+        `;
+        
+        // Clear any inline styles (sizing now handled by CSS)
+        contentElement.style.cssText = '';
+        
+        // Calculate offset for triangular rendering
+        const offsetX = cellSize * 0.5;
+        const offsetY = cellSize * 0.5;
+        
+        // Get all board cells
+        const cells = state.board.getAllCells();
+        
+        // Create spatial hash for occupied cells (to skip grid rendering under pieces)
+        const occupiedCells = new Set();
+        for (const pieceState of state.pieces) {
+            const pieceCells = pieceState.piece.getOccupiedCells(
+                pieceState.row, 
+                pieceState.col, 
+                pieceState.baseParity || 0
+            );
+            for (const { row, col, parity } of pieceCells) {
+                occupiedCells.add(`${row},${col},${parity}`);
+            }
+        }
+        
+        // Create map for forbidden cells
+        const forbiddenSet = new Set();
+        if (state.forbiddenCells) {
+            for (const { row, col } of state.forbiddenCells) {
+                const parity = state.grid.getParity(row, col);
+                forbiddenSet.add(`${row},${col},${parity}`);
+            }
+        }
+        
+        // First pass: Render grid cells (empty + forbidden, but not occupied by pieces)
+        for (const cellObj of cells) {
+            const row = cellObj.row;
+            const col = cellObj.col;
+            
+            const world = state.grid.gridToPixel(row, col);
+            const parity = state.grid.getParity(row, col);
+            const cellMapKey = `${row},${col},${parity}`;
+            
+            // Skip if occupied by a piece (we'll draw pieces separately on top)
+            if (occupiedCells.has(cellMapKey)) continue;
+            
+            const cell = document.createElement('div');
+            const x = offsetX + (world.x - bounds.minX) * displayScale;
+            const y = offsetY + (world.y - bounds.minY) * displayScale;
+            
+            // Check if cell is forbidden
+            const isForbidden = forbiddenSet.has(cellMapKey);
+            
+            if (isForbidden) {
+                // Forbidden cell - render as blocked
+                cell.style.cssText = `
+                    position: absolute;
+                    left: ${x - cellSize/2}px;
+                    top: ${y - triHeight/2}px;
+                    width: ${cellSize}px;
+                    height: ${triHeight}px;
+                    background: #3a0000;
+                    border: 1px solid #5a0000;
+                    z-index: 5;
+                    opacity: 0.8;
+                    pointer-events: none;
+                `;
+                
+                if (parity === 0) {
+                    cell.style.clipPath = 'polygon(50% 0%, 0% 100%, 100% 100%)';
+                } else {
+                    cell.style.clipPath = 'polygon(0% 0%, 100% 0%, 50% 100%)';
+                }
+            } else {
+                // Empty cell - render as grid
+                cell.style.cssText = `
+                    position: absolute;
+                    left: ${x - cellSize/2}px;
+                    top: ${y - triHeight/2}px;
+                    width: ${cellSize}px;
+                    height: ${triHeight}px;
+                    background: #1a1a2e;
+                    border: 1px solid #2a2a3e;
+                    z-index: 1;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    font-size: 10px;
+                    color: #666;
+                    pointer-events: none;
+                `;
+                
+                // Add triangle orientation indicator - larger and at border
+                if (parity === 0) {
+                    cell.style.clipPath = 'polygon(50% 0%, 0% 100%, 100% 100%)';
+                    cell.textContent = '▲';
+                    cell.style.fontSize = '20px';
+                } else {
+                    cell.style.clipPath = 'polygon(0% 0%, 100% 0%, 50% 100%)';
+                    cell.textContent = '▼';
+                    cell.style.fontSize = '20px';
+                }
+            }
+            
+            boardContainer.appendChild(cell);
+        }
+        
+        // Second pass: Create draggable pieces on top of the grid (individual divs per cell, grouped by piece)
+        const pieceGroups = new Map(); // pieceId -> array of cell divs
+        
+        for (const pieceState of state.pieces) {
+            const pieceCells = pieceState.piece.getOccupiedCells(
+                pieceState.row, 
+                pieceState.col, 
+                pieceState.baseParity || 0
+            );
+            
+            const color = this.getTriangularPieceColor(pieceState);
+            const cellDivs = [];
+            
+            // Create individual cell divs for this piece
+            for (const cellData of pieceCells) {
+                const world = state.grid.gridToPixel(cellData.row, cellData.col);
+                const x = offsetX + (world.x - bounds.minX) * displayScale;
+                const y = offsetY + (world.y - bounds.minY) * displayScale;
+                
+                const cell = document.createElement('div');
+                cell.style.cssText = `
+                    position: absolute;
+                    left: ${x - cellSize/2}px;
+                    top: ${y - triHeight/2}px;
+                    width: ${cellSize}px;
+                    height: ${triHeight}px;
+                    background: ${color};
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    font-size: 14px;
+                    color: white;
+                    font-weight: bold;
+                    user-select: none;
+                    cursor: grab;
+                    z-index: 10;
+                `;
+                
+                // Add triangle orientation
+                if (cellData.parity === 0) {
+                    cell.style.clipPath = 'polygon(50% 0%, 0% 100%, 100% 100%)';
+                } else {
+                    cell.style.clipPath = 'polygon(0% 0%, 100% 0%, 50% 100%)';
+                }
+                
+                cell.dataset.pieceId = pieceState.id;
+                cell.dataset.cellRow = cellData.row;
+                cell.dataset.cellCol = cellData.col;
+                cell.title = `Piece ${pieceState.id}: ${pieceState.piece.name}`;
+                
+                boardContainer.appendChild(cell);
+                cellDivs.push(cell);
+            }
+            
+            pieceGroups.set(pieceState.id, cellDivs);
+            
+            // Make all cells of this piece draggable together
+            this.makeTriPieceDraggable(cellDivs, currentNodeId, state, pieceState, cellSize, triHeight, offsetX, offsetY, bounds, displayScale);
+            
+            // Add compound move indicator if this piece is part of compound moves
+            const compoundMoves = state.generateCompoundMoves();
+            const participatingMoves = compoundMoves.filter(move => 
+                move.pieceIds && move.pieceIds.includes(pieceState.id)
+            );
+            
+            if (participatingMoves.length > 0) {
+                // Add glow effect to all cells in this piece
+                cellDivs.forEach(cell => {
+                    cell.title = `Piece ${pieceState.id}: ${pieceState.piece.name} - Can participate in ${participatingMoves.length} compound move(s)`;
+                });
+            }
+        }
+        
+        container.appendChild(boardContainer)
+        
+        // Piece count info
+        const pieceInfo = document.createElement('div');
+        pieceInfo.textContent = `Pieces: ${state.pieces.length}`;
+        if (state.forbiddenCells && state.forbiddenCells.length > 0) {
+            pieceInfo.textContent += ` | Forbidden cells: ${state.forbiddenCells.length}`;
+        }
+        pieceInfo.style.cssText = 'margin-top: 10px; color: #aaa; font-size: 12px;';
+        container.appendChild(pieceInfo);
+        
+        contentElement.appendChild(container);
+    }
+    
+    getTriangularPieceColor(pieceState) {
+        // Generate consistent colors for triangular pieces
+        const pieceId = pieceState.id;
+        const hue = (pieceId * 137.5) % 360;
+        return `hsl(${hue}, 70%, 55%)`;
+    }
+    
+    makeTriPieceDraggable(cellDivs, currentNodeId, state, pieceState, cellSize, triHeight, offsetX, offsetY, bounds, displayScale) {
+        let isDragging = false;
+        let startX, startY;
+        const initialPositions = new Map();
+        
+        const onMouseMove = (e) => {
+            if (!isDragging) return;
+            
+            const dx = e.clientX - startX;
+            const dy = e.clientY - startY;
+            
+            // Calculate potential new position
+            const firstCell = cellDivs[0];
+            const initialFirst = initialPositions.get(firstCell);
+            const potentialLeft = initialFirst.left + dx + cellSize/2;
+            const potentialTop = initialFirst.top + dy + triHeight/2;
+            
+            // Convert to world coordinates (unscale from display coordinates)
+            const worldX = (potentialLeft - offsetX) / displayScale + bounds.minX;
+            const worldY = (potentialTop - offsetY) / displayScale + bounds.minY;
+            
+            const grid = state.grid;
+            
+            // Get nearest grid position with snapping
+            const pixelCoords = grid.pixelToGrid(worldX, worldY);
+            const candidates = [
+                {row: pixelCoords.row, col: pixelCoords.col},
+                {row: pixelCoords.row - 1, col: pixelCoords.col},
+                {row: pixelCoords.row + 1, col: pixelCoords.col},
+                {row: pixelCoords.row, col: pixelCoords.col - 1},
+                {row: pixelCoords.row, col: pixelCoords.col + 1},
+                {row: pixelCoords.row - 1, col: pixelCoords.col - 1},
+                {row: pixelCoords.row - 1, col: pixelCoords.col + 1},
+                {row: pixelCoords.row + 1, col: pixelCoords.col - 1},
+                {row: pixelCoords.row + 1, col: pixelCoords.col + 1}
+            ];
+            
+            let bestRow = pixelCoords.row;
+            let bestCol = pixelCoords.col;
+            let bestDist = Infinity;
+            
+            for (const candidate of candidates) {
+                const candidateWorld = grid.gridToPixel(candidate.row, candidate.col);
+                const dist = Math.hypot(candidateWorld.x - worldX, candidateWorld.y - worldY);
+                if (dist < bestDist) {
+                    bestDist = dist;
+                    bestRow = candidate.row;
+                    bestCol = candidate.col;
+                }
+            }
+            
+            // Get current state from graph and check if move is valid
+            const currentState = this.graph.getStateById(currentNodeId);
+            const currentBaseParity = pieceState.baseParity || 0;
+            const pieceId = pieceState.id;
+            
+            // Check if this position is valid
+            if (currentState && currentState.canMove(pieceId, bestRow, bestCol, currentBaseParity)) {
+                // Valid position - calculate pixel coordinates for this grid position
+                const validWorld = grid.gridToPixel(bestRow, bestCol);
+                const validLeft = (validWorld.x - bounds.minX) * displayScale + offsetX - cellSize/2;
+                const validTop = (validWorld.y - bounds.minY) * displayScale + offsetY - triHeight/2;
+                
+                // Calculate offset from first cell to all other cells
+                cellDivs.forEach((cell, idx) => {
+                    const initial = initialPositions.get(firstCell);
+                    const cellInitial = initialPositions.get(cell);
+                    const cellOffsetX = cellInitial.left - initial.left;
+                    const cellOffsetY = cellInitial.top - initial.top;
+                    
+                    cell.style.left = `${validLeft + cellOffsetX}px`;
+                    cell.style.top = `${validTop + cellOffsetY}px`;
+                });
+            } else {
+                // Invalid position - keep pieces at their current (last valid) position
+                // Don't update the DOM - pieces stay where they are
+            }
+        };
+        
+        const onMouseUp = (e) => {
+            if (!isDragging) return;
+            isDragging = false;
+            
+            // Reset cursor and z-index
+            cellDivs.forEach(cell => {
+                cell.style.cursor = 'grab';
+                cell.style.zIndex = '10';
+            });
+            
+            // Remove global listeners
+            document.removeEventListener('mousemove', onMouseMove);
+            document.removeEventListener('mouseup', onMouseUp);
+            
+            // Calculate new grid position from first cell
+            const firstCell = cellDivs[0];
+            const finalLeft = parseFloat(firstCell.style.left) + cellSize/2;
+            const finalTop = parseFloat(firstCell.style.top) + cellSize/2;
+            
+            // Convert back to board coordinates
+            const worldX = finalLeft - offsetX + bounds.minX;
+            const worldY = finalTop - offsetY + bounds.minY;
+            
+            const grid = state.grid;
+            
+            // Try multiple nearby grid positions to find the best snap
+            // This provides tolerance like the square grid's Math.round()
+            const pixelCoords = grid.pixelToGrid(worldX, worldY);
+            let bestRow = pixelCoords.row;
+            let bestCol = pixelCoords.col;
+            let bestDist = Infinity;
+            
+            // Check the clicked cell and its neighbors for better snapping
+            const candidates = [
+                {row: pixelCoords.row, col: pixelCoords.col},
+                {row: pixelCoords.row - 1, col: pixelCoords.col},
+                {row: pixelCoords.row + 1, col: pixelCoords.col},
+                {row: pixelCoords.row, col: pixelCoords.col - 1},
+                {row: pixelCoords.row, col: pixelCoords.col + 1},
+                {row: pixelCoords.row - 1, col: pixelCoords.col - 1},
+                {row: pixelCoords.row - 1, col: pixelCoords.col + 1},
+                {row: pixelCoords.row + 1, col: pixelCoords.col - 1},
+                {row: pixelCoords.row + 1, col: pixelCoords.col + 1}
+            ];
+            
+            for (const candidate of candidates) {
+                const candidateWorld = grid.gridToPixel(candidate.row, candidate.col);
+                const dist = Math.hypot(candidateWorld.x - worldX, candidateWorld.y - worldY);
+                if (dist < bestDist) {
+                    bestDist = dist;
+                    bestRow = candidate.row;
+                    bestCol = candidate.col;
+                }
+            }
+            
+            const newRow = bestRow;
+            const newCol = bestCol;
+            
+            // Get current state from graph
+            const currentState = this.graph.getStateById(currentNodeId);
+            const currentBaseParity = pieceState.baseParity || 0;
+            const pieceId = pieceState.id;
+            
+            // Check if move is valid
+            if (currentState.canMove(pieceId, newRow, newCol, currentBaseParity)) {
+                // Create new state with the move
+                const move = {
+                    pieceId: pieceId,
+                    fromRow: pieceState.row,
+                    fromCol: pieceState.col,
+                    toRow: newRow,
+                    toCol: newCol,
+                    baseParity: currentBaseParity
+                };
+                
+                const newState = currentState.applyMove(move);
+                const newHash = newState.getHash(this.graph.treatShapesAsUnique);
+                
+                // Check if this state exists in the graph
+                const stateData = this.graph.states.get(newHash);
+                if (stateData) {
+                    // Navigate to this state!
+                    this.selectedNode = stateData.id;
+                    this.updateNodeColors();
+                    this.highlightConnectedEdges(stateData.id);
+                    this.displayBoardState(stateData.id);
+                    console.log(`Navigated to state #${stateData.id}`);
+                } else {
+                    console.log('This state is not in the graph');
+                    // Snap back to original positions
+                    cellDivs.forEach(cell => {
+                        const initial = initialPositions.get(cell);
+                        cell.style.left = `${initial.left}px`;
+                        cell.style.top = `${initial.top}px`;
+                    });
+                }
+            } else {
+                // Invalid move - snap back
+                cellDivs.forEach(cell => {
+                    const initial = initialPositions.get(cell);
+                    cell.style.left = `${initial.left}px`;
+                    cell.style.top = `${initial.top}px`;
+                });
+            }
+        };
+        
+        const onMouseDown = (e) => {
+            isDragging = true;
+            startX = e.clientX;
+            startY = e.clientY;
+            
+            e.preventDefault();
+            e.stopPropagation();
+            
+            // Store initial positions and raise z-index
+            cellDivs.forEach(cell => {
+                initialPositions.set(cell, {
+                    left: parseFloat(cell.style.left),
+                    top: parseFloat(cell.style.top)
+                });
+                cell.style.cursor = 'grabbing';
+                cell.style.zIndex = '100';
+            });
+            
+            // Attach global listeners
+            document.addEventListener('mousemove', onMouseMove);
+            document.addEventListener('mouseup', onMouseUp);
+        };
+        
+        // Attach mousedown to all cells of this piece
+        cellDivs.forEach(cell => {
+            cell.addEventListener('mousedown', onMouseDown);
+        });
     }
 
     // Add visual indicator for pieces that can participate in compound moves
@@ -1037,24 +1514,8 @@ class GraphVisualizer {
         );
         
         if (participatingMoves.length > 0) {
-            // Add a subtle glow effect to indicate compound move capability
-            piece.style.boxShadow = '0 0 8px rgba(255, 255, 0, 0.6)';
+            // Just add tooltip, no visual indicator
             piece.title = `Can participate in ${participatingMoves.length} compound move(s)`;
-            
-            // Add a small indicator dot
-            const indicator = document.createElement('div');
-            indicator.style.cssText = `
-                position: absolute;
-                top: 2px;
-                left: 2px;
-                width: 6px;
-                height: 6px;
-                background: #ffff00;
-                border-radius: 50%;
-                z-index: 15;
-                pointer-events: none;
-            `;
-            piece.appendChild(indicator);
         }
     }
 

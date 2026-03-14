@@ -1,5 +1,12 @@
 // Klotski Game Logic and State Management
 
+// Expose a build marker in the browser to confirm the latest file is loaded.
+if (typeof window !== 'undefined') {
+    window.__KLOTSKI_JS_BUILD__ = 'compound-fix-2026-03-13-7';
+    console.log('[Klotski] Build loaded:', window.__KLOTSKI_JS_BUILD__);
+    console.log('[Klotski] Fixes applied: parity-groupPositions, skipPositions-parity-check, transitive-closure');
+}
+
 // Triangular Lattice System - Simple Row/Column Based
 // Each cell is identified by (row, col), where:
 // - row: vertical row index (0, 1, 2, ...)
@@ -111,17 +118,25 @@ class TriGrid {
         }
     }
     
-    // Get move directions (only to cells with same parity)
+    // Get move directions for triangular lattice
+    // In a triangular lattice, pieces can only slide along edges
+    // There are 3 directions of edges (0°, 60°, 120°)
+    // To maintain parity (orientation), we need (row + col) % 2 constant
+    // Valid moves that maintain parity:
+    // - Horizontal: (0, ±2) - same parity since row unchanged
+    // - 60° diagonal: (1, 1) or (-1, -1) - parity changes by (1+1)%2 = 0
+    // - 120° diagonal: (1, -1) or (-1, 1) - parity changes by (1-1)%2 = 0
     getMoveDirections() {
         return [
+            // Horizontal direction (slide left/right along row)
             { row: 0, col: 2, name: 'right' },
             { row: 0, col: -2, name: 'left' },
-            { row: 2, col: 0, name: 'down' },
-            { row: -2, col: 0, name: 'up' },
-            { row: 2, col: 2, name: 'down-right' },
-            { row: 2, col: -2, name: 'down-left' },
-            { row: -2, col: 2, name: 'up-right' },
-            { row: -2, col: -2, name: 'up-left' }
+            // 60° diagonal (down-right / up-left)
+            { row: 1, col: 1, name: 'down-right' },
+            { row: -1, col: -1, name: 'up-left' },
+            // 120° diagonal (down-left / up-right)
+            { row: 1, col: -1, name: 'down-left' },
+            { row: -1, col: 1, name: 'up-right' }
         ];
     }
 }
@@ -140,35 +155,76 @@ class TriBoard {
             
             if (shape === 'rhombus') {
                 // Create a rhombus with flush edges
-                // For flush edges, we need ODD-numbered rows of triangles: 1, 3, 5, ..., 5, 3, 1
-                // Key insight: each row should have cells where only ONE parity dominates
-                // to create a flush edge pattern
-                const size = Math.floor(rows / 2); // Rhombus "radius"
+                const size = Math.min(rows, cols);
+                const halfSize = Math.floor(size / 2);
                 
                 for (let row = 0; row < rows; row++) {
-                    // Calculate distance from center
-                    const distFromCenter = Math.abs(row - size);
+                    let trianglesInRow;
+                    if (row < halfSize) {
+                        trianglesInRow = 2 * (row + 1) - 1;
+                    } else if (row < rows - halfSize) {
+                        trianglesInRow = 2 * halfSize - 1;
+                    } else {
+                        trianglesInRow = 2 * (rows - row) - 1;
+                    }
                     
-                    // Number of triangles in this row (odd numbers: 1, 3, 5, ...)
-                    const triangleCount = 2 * (size - distFromCenter) + 1;
+                    let centerCol = Math.floor(cols / 2);
+                    if (centerCol % 2 !== 0) {
+                        centerCol -= 1;
+                    }
+                    const startCol = centerCol - Math.floor(trianglesInRow / 2);
+                    const endCol = startCol + trianglesInRow - 1;
                     
-                    // Only include rows that are within the rhombus
-                    if (triangleCount > 0) {
-                        // Determine the parity for this row (alternates to create flush edges)
-                        const rowParity = row % 2;
-                        
-                        // Center the triangles horizontally
-                        const centerCol = size;
-                        const halfCount = Math.floor(triangleCount / 2);
-                        
-                        // Add cells with the correct parity for this row
-                        for (let i = -halfCount; i <= halfCount; i++) {
-                            const col = centerCol + i;
-                            // Only add if this cell has the correct parity for flush edges
-                            if ((row + col) % 2 === rowParity) {
-                                this.validCells.add(`${row},${col}`);
-                            }
-                        }
+                    for (let col = startCol; col <= endCol; col++) {
+                        this.validCells.add(`${row},${col}`);
+                    }
+                }
+            } else if (shape === 'triangle') {
+                // Create a triangle (half of rhombus) - upper half
+                const size = Math.min(rows, cols);
+                const halfSize = Math.floor(size / 2);
+                
+                for (let row = 0; row < halfSize; row++) {
+                    const trianglesInRow = 2 * (row + 1) - 1;
+                    
+                    let centerCol = Math.floor(cols / 2);
+                    if (centerCol % 2 !== 0) {
+                        centerCol -= 1;
+                    }
+                    const startCol = centerCol - Math.floor(trianglesInRow / 2);
+                    const endCol = startCol + trianglesInRow - 1;
+                    
+                    for (let col = startCol; col <= endCol; col++) {
+                        this.validCells.add(`${row},${col}`);
+                    }
+                }
+            } else if (shape === 'hexagon') {
+                // Create a hexagon: rhombus with top and bottom tips cut off
+                const size = Math.min(rows, cols);
+                const halfSize = Math.floor(size / 2);
+                const cutoff = Math.floor(halfSize / 3); // Cut off 1/3 of tips
+                
+                for (let row = cutoff; row < rows - cutoff; row++) {
+                    let trianglesInRow;
+                    const adjustedRow = row - cutoff;
+                    const adjustedMax = rows - 2 * cutoff;
+                    const adjustedHalf = Math.floor(adjustedMax / 2);
+                    
+                    if (adjustedRow < adjustedHalf) {
+                        trianglesInRow = 2 * halfSize - 1; // Max width
+                    } else {
+                        trianglesInRow = 2 * halfSize - 1; // Keep max width
+                    }
+                    
+                    let centerCol = Math.floor(cols / 2);
+                    if (centerCol % 2 !== 0) {
+                        centerCol -= 1;
+                    }
+                    const startCol = centerCol - Math.floor(trianglesInRow / 2);
+                    const endCol = startCol + trianglesInRow - 1;
+                    
+                    for (let col = startCol; col <= endCol; col++) {
+                        this.validCells.add(`${row},${col}`);
                     }
                 }
             } else {
@@ -256,7 +312,7 @@ class TriPiece {
     }
     
     // Check if this piece can be placed at (row0, col0, baseParity) on the given board
-    canPlaceAt(row0, col0, baseParity, board, occupiedCells, excludeId = -1) {
+    canPlaceAt(row0, col0, baseParity, board, occupiedCells, excludeId = -1, forbiddenCells = null) {
         const cells = this.getOccupiedCells(row0, col0, baseParity);
         
         for (const { row, col, parity } of cells) {
@@ -272,10 +328,26 @@ class TriPiece {
                 return false; // Can't place △ where ▽ should be (or vice versa)
             }
             
+            // Check if cell is forbidden
+            if (forbiddenCells && forbiddenCells.length > 0) {
+                const isForbidden = forbiddenCells.some(fc => fc.row === row && fc.col === col);
+                if (isForbidden) {
+                    return false;
+                }
+            }
+            
             // Check if cell is already occupied by another piece
+            // In triangular lattice, only ONE triangle (of either parity) can occupy a (row,col) location
+            // So we need to check BOTH parities
             const cellKey = `${row},${col},${parity}`;
+            const oppositeParity = 1 - parity;
+            const cellKeyOpposite = `${row},${col},${oppositeParity}`;
+            
             const occupyingPiece = occupiedCells.get(cellKey);
-            if (occupyingPiece !== undefined && occupyingPiece !== excludeId) {
+            const occupyingPieceOpposite = occupiedCells.get(cellKeyOpposite);
+            
+            if ((occupyingPiece !== undefined && occupyingPiece !== excludeId) ||
+                (occupyingPieceOpposite !== undefined && occupyingPieceOpposite !== excludeId)) {
                 return false;
             }
         }
@@ -315,11 +387,23 @@ class TriKlotskiState {
     // Update spatial hash for O(1) occupancy tests
     updateSpatialHash() {
         this.spatialHash.clear();
+        
+        // Add pieces to spatial hash
         for (const pieceState of this.pieces) {
             const cells = pieceState.piece.getOccupiedCells(pieceState.row, pieceState.col, pieceState.baseParity || 0);
             for (const { row, col, parity } of cells) {
                 const key = `${row},${col},${parity}`;
                 this.spatialHash.set(key, pieceState.id);
+            }
+        }
+        
+        // Add forbidden cells to spatial hash (they block like immovable pieces)
+        // Use a special ID 'FORBIDDEN' that will block all pieces
+        for (const forbiddenCell of this.forbiddenCells) {
+            // Forbidden cells block BOTH parities at that location
+            for (let parity = 0; parity <= 1; parity++) {
+                const key = `${forbiddenCell.row},${forbiddenCell.col},${parity}`;
+                this.spatialHash.set(key, 'FORBIDDEN');
             }
         }
     }
@@ -342,7 +426,147 @@ class TriKlotskiState {
         const key = `${row},${col}`;
         return this.spatialHash.get(key) || null;
     }
-    
+
+    // Direction-aware single-step blocking check for triangular lattice moves.
+    // Returns { anchored: boolean, blockers: Set<number> } where anchored means the move is invalid
+    // due to walls/forbidden/parity mismatch, and blockers are piece IDs that obstruct the move.
+    _getTriStepBlockers(currCell, targetCell, movingPieceId, occupancyMap, skipPositions = null) {
+        const blockers = new Set();
+
+        const dr = targetCell.row - currCell.row;
+        const dc = targetCell.col - currCell.col;
+
+        // Only the 6 lattice step vectors are valid.
+        const isHorizontal = dr === 0 && Math.abs(dc) === 2;
+        const isDiagonal = Math.abs(dr) === 1 && Math.abs(dc) === 1;
+        if (!isHorizontal && !isDiagonal) {
+            return { anchored: true, blockers };
+        }
+
+        const checkOccupancyAt = (row, col, isDestination = false) => {
+            // For destination, check skipPositions with specific parity
+            if (isDestination && skipPositions) {
+                const skipKey = `${row},${col},${targetCell.parity}`;
+                if (skipPositions.has(skipKey)) return { anchored: false };
+            }
+            if (!this.board.contains(row, col)) return { anchored: false }; // Outside board can't be occupied
+
+            for (let parity = 0; parity <= 1; parity++) {
+                const key = `${row},${col},${parity}`;
+                const blockingId = occupancyMap.get(key);
+                if (blockingId === undefined || blockingId === movingPieceId) continue;
+                if (blockingId === 'FORBIDDEN') return { anchored: true };
+                blockers.add(blockingId);
+            }
+
+            return { anchored: false };
+        };
+
+        // For horizontal single-step moves (0, ±2), the piece slides past the triangle at (row, col±1).
+        // That intermediate "gate" location must be empty (otherwise we'd pass through another triangle).
+        if (isHorizontal) {
+            const midCol = currCell.col + (dc / 2);
+            const gateResult = checkOccupancyAt(currCell.row, midCol, false);
+            if (gateResult.anchored) return { anchored: true, blockers };
+        }
+
+        // For diagonal single-step moves (±1,±1), check the two gate cells that the moving
+        // edge sweeps through. For a move (dr, dc) = (±1, ±1):
+        //   - gate1: (currCell.row + dr, currCell.col)  — shares a vertex with current, edge with dest
+        //   - gate2: (currCell.row,      currCell.col + dc) — shares a vertex with current, edge with dest
+        // Both must be empty (or part of the same moving group via skipPositions).
+        if (isDiagonal) {
+            const gate1 = { row: currCell.row + dr, col: currCell.col };
+            const gate2 = { row: currCell.row,      col: currCell.col + dc };
+            for (const gate of [gate1, gate2]) {
+                if (!this.board.contains(gate.row, gate.col)) continue; // off-board = no obstruction
+                if (skipPositions) {
+                    // Allow if either parity of this gate cell is in the moving group
+                    const skip0 = skipPositions.has(`${gate.row},${gate.col},0`);
+                    const skip1 = skipPositions.has(`${gate.row},${gate.col},1`);
+                    if (skip0 || skip1) continue;
+                }
+                const gateResult = checkOccupancyAt(gate.row, gate.col, false);
+                if (gateResult.anchored) return { anchored: true, blockers };
+            }
+        }
+        // Finally, check occupancy at destination (collision with other pieces / forbidden).
+        const destResult = checkOccupancyAt(targetCell.row, targetCell.col, true);
+        if (destResult.anchored) return { anchored: true, blockers };
+
+        return { anchored: false, blockers };
+    }
+static regressionTestRhombus3() {
+    console.group('[Regression] Length-3 rhombus two-piece interlock');
+
+    // Board: 5-cell row.  Cells: (0,0)△ (0,1)▽ (0,2)△ (0,3)▽ (0,4)△
+    // Piece A at (0,0), Piece B at (0,2), empty space at (0,4)
+    // A can't move right alone (B blocks), B can't move right alone (would be fine actually)
+    // Better test: diagonal interlock on a 2-row board
+    //
+    // Board (2 rows):
+    //   row0: (0,0)△ (0,1)▽ (0,2)△
+    //   row1: (1,1)▽ (1,2)△ (1,3)▽
+    // Piece A at (0,1) parity 1, Piece B at (1,2) parity 0
+    // They interlock diagonally: A moving down-right lands on (1,2) = blocked by B
+    //                            B moving up-left  lands on (0,1) = blocked by A
+    // Neither can move alone; together they should be able to move down-right
+    // if there is room.
+
+    const cells = new Set(['0,0','0,1','0,2','0,3','1,1','1,2','1,3','1,4']);
+    const board = new TriBoard(2, 5, cells, 40, 'custom');
+
+    const pieceA = new TriPiece(0, [[0,0]], 'A');
+    const pieceB = new TriPiece(1, [[0,0]], 'B');
+
+    // A at (0,1) parity=1, B at (1,2) parity=0
+    // A's down-right target: (1,2) — occupied by B  → blocked alone
+    // B's up-left target:    (0,1) — occupied by A  → blocked alone
+    // Together down-right: A→(1,2), B→(2,3) — need (2,3) on board; it's not, so they're anchored
+    // Let's instead put them where there IS room:
+    // A at (0,1), B at (1,2), empty at (1,4) and (2,3)
+    // Actually simplest: A at (0,1) parity1, B at (1,2) parity0
+    // board has (2,3) so add it
+    const cells2 = new Set(['0,0','0,1','0,2','0,3','1,1','1,2','1,3','1,4','2,2','2,3','2,4']);
+    const board2 = new TriBoard(3, 5, cells2, 40, 'custom');
+
+    const state = new TriKlotskiState(
+        [
+            { id: 0, row: 0, col: 1, baseParity: 1, piece: pieceA },
+            { id: 1, row: 1, col: 2, baseParity: 1, piece: pieceB }
+        ],
+        board2
+    );
+
+    const singleMoves = state.getSingleMoves();
+    const diagonalSingles = singleMoves.filter(m =>
+        ['down-right','up-left','down-left','up-right'].includes(m.direction)
+    );
+
+    console.log('Single moves:', singleMoves.length, singleMoves.map(m => `piece${m.pieceId}:${m.direction}`));
+    console.log('Diagonal singles:', diagonalSingles.length);
+
+    // Neither piece should be able to move diagonally into the other's cell alone
+    const aDownRight = singleMoves.find(m => m.pieceId === 0 && m.direction === 'down-right');
+    const bUpLeft    = singleMoves.find(m => m.pieceId === 1 && m.direction === 'up-left');
+    console.assert(!aDownRight, 'FAIL: A should not be able to move down-right alone (B is there)');
+    console.assert(!bUpLeft,    'FAIL: B should not be able to move up-left alone (A is there)');
+    if (!aDownRight) console.log('✅ A correctly blocked from down-right alone');
+    if (!bUpLeft)    console.log('✅ B correctly blocked from up-left alone');
+
+    const compoundMoves = state.generateCompoundMoves();
+    console.log('Compound moves:', compoundMoves.length, compoundMoves.map(m => `[${m.pieceIds}]:${m.direction}`));
+
+    const abDownRight = compoundMoves.find(m =>
+        m.direction === 'down-right' &&
+        m.pieceIds.includes(0) && m.pieceIds.includes(1)
+    );
+    console.assert(abDownRight, 'FAIL: {A,B} should have a compound down-right move');
+    if (abDownRight) console.log('✅ {A,B} compound down-right move found');
+
+    console.groupEnd();
+    return { singleMoves, compoundMoves };
+}
     // Check if a piece can move to a new position
     canMove(pieceId, newRow, newCol, newBaseParity = null) {
         const pieceState = this.pieces.find(p => p.id === pieceId);
@@ -351,21 +575,73 @@ class TriKlotskiState {
         // Use existing baseParity if not specified
         const baseParity = newBaseParity !== null ? newBaseParity : (pieceState.baseParity || 0);
         
-        // Check if the piece can be placed at the new position
-        return pieceState.piece.canPlaceAt(newRow, newCol, baseParity, this.board, this.spatialHash, pieceId);
+        const deltaRow = newRow - pieceState.row;
+        const deltaCol = newCol - pieceState.col;
+        
+        // For ANY non-zero move, check if path is blocked (single-step triangular physics)
+        if (deltaRow !== 0 || deltaCol !== 0) {
+            // Get current piece cells
+            const currentCells = pieceState.piece.getOccupiedCells(
+                pieceState.row,
+                pieceState.col,
+                baseParity
+            );
+            
+            // Get destination cells
+            const destCells = pieceState.piece.getOccupiedCells(
+                newRow,
+                newCol,
+                baseParity
+            );
+            
+            // For each cell in the piece, check if moving from current to dest is blocked
+            for (let i = 0; i < currentCells.length; i++) {
+                const currCell = currentCells[i];
+                const destCell = destCells[i];
+
+                const { anchored, blockers } = this._getTriStepBlockers(
+                    currCell,
+                    destCell,
+                    pieceId,
+                    this.spatialHash
+                );
+
+                if (anchored || blockers.size > 0) return false;
+            }
+        }
+        
+        // Check destination (after path check)
+        if (!pieceState.piece.canPlaceAt(newRow, newCol, baseParity, this.board, this.spatialHash, pieceId, this.forbiddenCells)) {
+            return false;
+        }
+        
+        return true;
     }
     
     // Get all valid moves from current state
     getValidMoves() {
+        const moves = this.getSingleMoves();
+        
+        // Add compound moves (for interlocked pieces)
+        const compoundMoves = this.generateCompoundMoves();
+        moves.push(...compoundMoves);
+        
+        return moves;
+    }
+    
+    // Get single piece moves only
+    getSingleMoves() {
         const moves = [];
         const directions = this.grid.getMoveDirections();
         
         for (const pieceState of this.pieces) {
+            const baseParity = pieceState.baseParity || 0;
             for (const dir of directions) {
                 const newRow = pieceState.row + dir.row;
                 const newCol = pieceState.col + dir.col;
                 
-                if (this.canMove(pieceState.id, newRow, newCol)) {
+                // Explicitly pass baseParity to canMove
+                if (this.canMove(pieceState.id, newRow, newCol, baseParity)) {
                     moves.push({
                         type: 'single',
                         pieceId: pieceState.id,
@@ -382,8 +658,378 @@ class TriKlotskiState {
         return moves;
     }
     
+    // Generate compound moves for interlocked pieces
+    generateCompoundMoves() {
+        const moves = [];
+        
+        // Get all states reachable by single moves
+        const singleMoveStates = new Set();
+        const singleMoves = this.getSingleMoves();
+        
+        for (const move of singleMoves) {
+            const newState = this.applyMove(move);
+            const hash = newState.getHash();
+            singleMoveStates.add(hash);
+        }
+        
+        // All directions for triangular lattice
+        const directions = this.grid.getMoveDirections();
+        
+        for (const direction of directions) {
+            const dependencies = this.buildDependencyGraph(direction);
+            const sccs = this.findStronglyConnectedComponents(dependencies);
+            
+            // Mark anchored SCCs (those that hit walls or forbidden cells)
+            const anchoredSCCs = new Set();
+            for (const scc of sccs) {
+                for (const pieceId of scc) {
+                    if (dependencies.get(pieceId)?.has('ANCHORED')) {
+                        anchoredSCCs.add(scc);
+                        break;
+                    }
+                }
+            }
+            
+            // Build reachability graph between SCCs
+            const sccMap = new Map(); // pieceId -> scc index
+            for (let i = 0; i < sccs.length; i++) {
+                for (const pieceId of sccs[i]) {
+                    sccMap.set(pieceId, i);
+                }
+            }
+            
+            const reachable = new Map(); // scc index -> Set of reachable scc indices
+            for (let i = 0; i < sccs.length; i++) {
+                reachable.set(i, new Set([i]));
+                
+                for (const pieceId of sccs[i]) {
+                    const dependents = dependencies.get(pieceId) || new Set();
+                    for (const dependent of dependents) {
+                        if (dependent !== 'ANCHORED' && sccMap.has(dependent)) {
+                            const dependentSCC = sccMap.get(dependent);
+                            reachable.get(i).add(dependentSCC);
+                        }
+                    }
+                }
+            }
+            
+            // Transitive closure
+            let changed = true;
+            while (changed) {
+                changed = false;
+                for (let i = 0; i < sccs.length; i++) {
+                    const currentReachable = reachable.get(i);
+                    const sizeBefore = currentReachable.size;
+                    
+                    for (const j of currentReachable) {
+                        for (const k of reachable.get(j)) {
+                            currentReachable.add(k);
+                        }
+                    }
+                    
+                    if (currentReachable.size > sizeBefore) {
+                        changed = true;
+                    }
+                }
+            }
+            
+            // Generate moves for each SCC using reachability
+            const processedGroups = new Set();
+            
+            for (let i = 0; i < sccs.length; i++) {
+                if (anchoredSCCs.has(sccs[i])) continue;
+                
+                // Build the full group from reachable SCCs
+                const group = new Set();
+                for (const j of reachable.get(i)) {
+                    for (const pieceId of sccs[j]) {
+                        group.add(pieceId);
+                    }
+                }
+                
+                // Skip single-piece groups (not compound moves)
+                if (group.size <= 1) continue;
+                
+                // Create a canonical representation of the group for deduplication
+                const groupKey = Array.from(group).sort((a, b) => a - b).join(',');
+                if (processedGroups.has(groupKey)) {
+                    continue; // Already processed this group
+                }
+                processedGroups.add(groupKey);
+                // Skip if all pieces in the group can already move independently in this direction
+                const allCanMoveSingly = Array.from(group).every(id => {
+                    const ps = this.pieces.find(p => p.id === id);
+                    const newRow = ps.row + direction.row;
+                    const newCol = ps.col + direction.col;
+                    return this.canMove(id, newRow, newCol, ps.baseParity || 0);
+                });
+                if (allCanMoveSingly) continue;
+                // First check if the group can move together
+                if (!this.canTranslateGroup(Array.from(group), direction)) {
+                    continue;
+                }
+                
+                // Generate compound move
+                const move = {
+                    type: 'compound',
+                    pieceIds: Array.from(group),
+                    direction: direction.name,
+                    deltaRow: direction.row,
+                    deltaCol: direction.col
+                };
+                
+                // Only add if this compound move reaches a new state
+                const newState = this.applyCompoundMove(move);
+                const newHash = newState.getHash();
+                
+                if (!singleMoveStates.has(newHash)) {
+                    moves.push(move);
+                }
+            }
+        }
+        
+        return moves;
+    }
+    
+    // Build dependency graph for a direction
+    buildDependencyGraph(direction) {
+        const dependencies = new Map();
+        
+        // Initialize
+        for (const pieceState of this.pieces) {
+            dependencies.set(pieceState.id, new Set());
+        }
+        
+        // Check each piece's target cells
+        for (const pieceState of this.pieces) {
+            const cells = pieceState.piece.getOccupiedCells(
+                pieceState.row, 
+                pieceState.col, 
+                pieceState.baseParity || 0
+            );
+            
+            for (const cell of cells) {
+                const targetRow = cell.row + direction.row;
+                const targetCol = cell.col + direction.col;
+                const targetParity = cell.parity; // Maintain the same parity as the source cell
+                const currCell = cell;
+                const targetCell = { row: targetRow, col: targetCol, parity: targetParity };
+                
+                // Check bounds
+                if (!this.board.contains(targetRow, targetCol)) {
+                    // This piece hits a wall - mark as anchored and stop checking
+                    dependencies.set(pieceState.id, new Set(['ANCHORED']));
+                    break;
+                }
+                
+                // Check if target cell's grid parity matches piece's parity
+                const gridParity = this.grid.getParity(targetRow, targetCol);
+                if (targetParity !== gridParity) {
+                    // Can't move to a cell with wrong parity - mark as anchored and stop checking
+                    dependencies.set(pieceState.id, new Set(['ANCHORED']));
+                    break;
+                }
+                
+                // Check forbidden cells
+                if (this.isCellForbidden(targetRow, targetCol)) {
+                    // This piece hits a forbidden cell - mark as anchored and stop checking
+                    dependencies.set(pieceState.id, new Set(['ANCHORED']));
+                    break;
+                }
+
+                // Add dependencies based on actual single-step blockers (target + diagonal gate cells).
+                const { anchored, blockers } = this._getTriStepBlockers(
+                    currCell,
+                    targetCell,
+                    pieceState.id,
+                    this.spatialHash
+                );
+
+                if (anchored) {
+                    dependencies.set(pieceState.id, new Set(['ANCHORED']));
+                    break;
+                }
+
+                for (const blockerId of blockers) {
+                    dependencies.get(pieceState.id).add(blockerId);
+                }
+            }
+        }
+        
+        return dependencies;
+    }
+    
+    // Find strongly connected components (circular dependencies)
+    findStronglyConnectedComponents(dependencies) {
+        const visited = new Set();
+        const onStack = new Set();
+        const low = new Map();
+        const ids = new Map();
+        const sccs = [];
+        let idCounter = 0;
+        const stack = [];
+        
+        const dfs = (node) => {
+            ids.set(node, idCounter);
+            low.set(node, idCounter);
+            idCounter++;
+            visited.add(node);
+            onStack.add(node);
+            stack.push(node);
+            
+            const dependents = dependencies.get(node) || new Set();
+            for (const dependent of dependents) {
+                if (dependent === 'ANCHORED') continue;
+                
+                if (!visited.has(dependent)) {
+                    dfs(dependent);
+                }
+                if (onStack.has(dependent)) {
+                    low.set(node, Math.min(low.get(node), low.get(dependent)));
+                }
+            }
+            
+            // If this is a root node, pop the SCC from stack
+            if (ids.get(node) === low.get(node)) {
+                const scc = [];
+                let w;
+                do {
+                    w = stack.pop();
+                    onStack.delete(w);
+                    scc.push(w);
+                } while (w !== node);
+                if (scc.length > 0) {
+                    sccs.push(scc);
+                }
+            }
+        };
+        
+        for (const pieceId of dependencies.keys()) {
+            if (!visited.has(pieceId)) {
+                dfs(pieceId);
+            }
+        }
+        
+        return sccs;
+    }
+    
+    // Check if a group of pieces can all translate together in a direction
+    canTranslateGroup(pieceIds, direction) {
+        // Create temporary spatial hash EXCLUDING the moving pieces (key insight from rectangular grid!)
+        const tempHash = new Map();
+        for (const pieceState of this.pieces) {
+            if (!pieceIds.includes(pieceState.id)) {
+                const cells = pieceState.piece.getOccupiedCells(
+                    pieceState.row,
+                    pieceState.col,
+                    pieceState.baseParity || 0
+                );
+                for (const cell of cells) {
+                    // Store both parities since only one triangle can exist at (row,col)
+                    const key = `${cell.row},${cell.col},${cell.parity}`;
+                    tempHash.set(key, pieceState.id);
+                    const keyOpp = `${cell.row},${cell.col},${1 - cell.parity}`;
+                    tempHash.set(keyOpp, pieceState.id);
+                }
+            }
+        }
+        
+        // Add forbidden cells to temp hash
+        for (const forbiddenCell of this.forbiddenCells) {
+            for (let parity = 0; parity <= 1; parity++) {
+                const key = `${forbiddenCell.row},${forbiddenCell.col},${parity}`;
+                tempHash.set(key, 'FORBIDDEN');
+            }
+        }
+        
+        // Build a set of all cells occupied by the moving group
+        const groupPositions = new Set();
+        for (const id of pieceIds) {
+            const pieceState = this.pieces.find(p => p.id === id);
+            const cells = pieceState.piece.getOccupiedCells(
+                pieceState.row,
+                pieceState.col,
+                pieceState.baseParity || 0
+            );
+            for (const cell of cells) {
+                groupPositions.add(`${cell.row},${cell.col},${cell.parity}`);
+            }
+        }
+        
+        // Check if all pieces in group can move to their new positions
+        for (const id of pieceIds) {
+            const pieceState = this.pieces.find(p => p.id === id);
+            const newRow = pieceState.row + direction.row;
+            const newCol = pieceState.col + direction.col;
+            
+            // Get current cells
+            const currentCells = pieceState.piece.getOccupiedCells(
+                pieceState.row,
+                pieceState.col,
+                pieceState.baseParity || 0
+            );
+            
+            // Get target cells
+            const targetCells = pieceState.piece.getOccupiedCells(
+                newRow,
+                newCol,
+                pieceState.baseParity || 0
+            );
+            
+            // Check each cell in the piece
+            for (let i = 0; i < currentCells.length; i++) {
+                const currCell = currentCells[i];
+                const targetCell = targetCells[i];
+                
+                // Check bounds
+                if (!this.board.contains(targetCell.row, targetCell.col)) {
+                    return false;
+                }
+                
+                // Check if target cell's grid parity matches piece's parity
+                const gridParity = this.grid.getParity(targetCell.row, targetCell.col);
+                if (targetCell.parity !== gridParity) {
+                    return false;
+                }
+
+                const { anchored, blockers } = this._getTriStepBlockers(
+                    currCell,
+                    targetCell,
+                    pieceState.id,
+                    tempHash,
+                    groupPositions
+                );
+
+                if (anchored || blockers.size > 0) return false;
+            }
+        }
+        
+        return true;
+    }
+    
+    // Apply a compound move
+    applyCompoundMove(move) {
+        const newPieces = this.pieces.map(p => {
+            if (move.pieceIds.includes(p.id)) {
+                return {
+                    ...p,
+                    row: p.row + move.deltaRow,
+                    col: p.col + move.deltaCol
+                };
+            }
+            return {...p};
+        });
+        
+        return new TriKlotskiState(newPieces, this.board, this.forbiddenCells);
+    }
+    
     // Apply a move and return new state
     applyMove(move) {
+        if (move.type === 'compound') {
+            return this.applyCompoundMove(move);
+        }
+        
+        // Single piece move
         const newPieces = this.pieces.map(p => {
             if (p.id === move.pieceId) {
                 return {
@@ -399,13 +1045,41 @@ class TriKlotskiState {
     }
     
     // Get hash string for state comparison
-    getHash() {
-        const parts = [];
-        const sortedPieces = [...this.pieces].sort((a, b) => a.id - b.id);
+    getHash(treatShapesAsUnique = false) {
+        if (treatShapesAsUnique) {
+            // Treat each piece as unique based on ID
+            const parts = [];
+            const sortedPieces = [...this.pieces].sort((a, b) => a.id - b.id);
+            for (const pieceState of sortedPieces) {
+                const shape = this.getPieceShape(pieceState.piece);
+                const baseParity = pieceState.baseParity || 0;
+                parts.push(`${pieceState.id}[${shape}]:${pieceState.row},${pieceState.col},${baseParity}`);
+            }
+            return parts.join('|');
+        }
         
-        for (const pieceState of sortedPieces) {
-            const shape = this.getPieceShape(pieceState.piece);
-            parts.push(`${pieceState.id}[${shape}]:${pieceState.row},${pieceState.col}`);
+        // Group pieces by shape signature (default: treat same shapes as identical)
+        const groups = {};
+        for (const pieceState of this.pieces) {
+            const key = this.getPieceShape(pieceState.piece);
+            if (!groups[key]) groups[key] = [];
+            groups[key].push({
+                row: pieceState.row,
+                col: pieceState.col,
+                baseParity: pieceState.baseParity || 0
+            });
+        }
+        
+        // Sort positions within each group, then sort groups
+        const parts = [];
+        for (const key of Object.keys(groups).sort()) {
+            const positions = groups[key].sort((a, b) => {
+                if (a.row !== b.row) return a.row - b.row;
+                if (a.col !== b.col) return a.col - b.col;
+                return a.baseParity - b.baseParity;
+            });
+            const posStr = positions.map(p => `${p.row},${p.col},${p.baseParity}`).join(';');
+            parts.push(`${key}:${posStr}`);
         }
         
         return parts.join('|');
@@ -1188,9 +1862,21 @@ class StateSpaceGraph {
         let duplicatesFound = 0;
         console.log('Generating state space graph...');
         console.log('Max states limit:', maxStates);
-        console.log('Initial state is3D:', initialState.is3D);
-        console.log('Initial state hash:', startHash.substring(0, 60) + (startHash.length > 60 ? '...' : ''));
-        console.log('Initial state blocks:', initialState.blocks.map(b => `${b.width}x${b.height}@(${b.x},${b.y})`).join(', '));
+        
+        // Check if this is triangular or rectangular mode
+        const isTriangular = initialState.pieces !== undefined;
+        
+        if (isTriangular) {
+            console.log('Triangular mode - Initial state:');
+            console.log('  Board:', initialState.board.rows, 'x', initialState.board.cols, initialState.board.shape);
+            console.log('  Pieces:', initialState.pieces.length);
+            console.log('  Hash:', startHash.substring(0, 60) + (startHash.length > 60 ? '...' : ''));
+        } else {
+            console.log('Rectangular mode - Initial state:');
+            console.log('  is3D:', initialState.is3D);
+            console.log('  Hash:', startHash.substring(0, 60) + (startHash.length > 60 ? '...' : ''));
+            console.log('  Blocks:', initialState.blocks.map(b => `${b.width}x${b.height}@(${b.x},${b.y})`).join(', '));
+        }
 
         while (queue.length > 0 && this.stateList.length < maxStates) {
             const currentState = queue.shift();
@@ -1202,7 +1888,7 @@ class StateSpaceGraph {
             // Debug: log moves for first state
             if (processed === 0) {
                 console.log(`First state has ${moves.length} valid moves`);
-                if (currentState.is3D) {
+                if (!isTriangular && currentState.is3D) {
                     const zMoves = moves.filter(m => m.fromZ !== m.toZ);
                     console.log(`  Including ${zMoves.length} Z-axis moves`);
                 }
@@ -1220,10 +1906,11 @@ class StateSpaceGraph {
                     duplicatesFound++;
                 }
 
-                // Add edge
+                // Add edge (only in one direction to avoid duplicates)
                 const newId = this.states.get(newHash).id;
                 if (!this.states.get(currentHash).neighbors.includes(newId)) {
                     this.states.get(currentHash).neighbors.push(newId);
+                    this.states.get(newHash).neighbors.push(currentId); // Add reverse neighbor
                     this.edges.push({from: currentId, to: newId});
                 }
             }
@@ -1336,4 +2023,7 @@ class StateSpaceGraph {
         return levels;
     }
 }
-
+// Expose regression test globally
+if (typeof window !== 'undefined') {
+    window.regressionTestRhombus3 = TriKlotskiState.regressionTestRhombus3;
+}

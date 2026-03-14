@@ -183,6 +183,15 @@
             font-size: 12px;
             margin: 3px 0;
         }
+        
+        .tri-piece-button:hover {
+            transform: scale(1.15);
+            filter: brightness(1.2);
+        }
+        
+        .tri-piece-button:active {
+            transform: scale(0.95);
+        }
 
         select {
             background: rgba(40, 40, 60, 0.8);
@@ -234,8 +243,14 @@
 
         #boardState {
             min-width: 200px;
-            max-width: 220px;
+            max-width: 400px;
             cursor: pointer;
+        }
+        
+        #boardStateContent {
+            max-width: 90vw;
+            max-height: 70vh;
+            overflow: auto;
         }
         
         #boardState:hover {
@@ -369,7 +384,7 @@
 
         .editor-container {
             background: #1a1a2e;
-            border: 2px solid #4488ff;
+            border: none;
             border-radius: 10px;
             padding: 30px;
             max-width: 90vw;
@@ -396,6 +411,20 @@
             width: fit-content;
             position: relative;
         }
+        
+        .editor-grid.triangular {
+            display: block;
+            grid-template-columns: none;
+            grid-template-rows: none;
+            gap: 0;
+            background: #0f0f1e;
+            padding: 20px;
+            border-radius: 5px;
+            margin: 20px auto;
+            width: fit-content;
+            position: relative;
+            min-height: 200px;
+        }
 
         .grid-cell {
             width: 60px;
@@ -420,7 +449,6 @@
             font-weight: bold;
             color: white;
             text-shadow: 0 1px 2px rgba(0,0,0,0.5);
-            border: 2px solid rgba(0,0,0,0.3);
             user-select: none;
             touch-action: none;
         }
@@ -461,7 +489,6 @@
 
         .visual-piece {
             cursor: pointer;
-            border: 2px solid rgba(0, 0, 0, 0.3);
             border-radius: 4px;
             transition: all 0.2s;
             display: flex;
@@ -477,6 +504,15 @@
             transform: scale(1.1);
             box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
             filter: brightness(1.2);
+        }
+        
+        .tri-piece-button:hover {
+            transform: scale(1.1);
+            filter: brightness(1.2);
+        }
+        
+        .tri-piece-button:active {
+            transform: scale(0.95);
         }
 
         .big-piece {
@@ -533,47 +569,62 @@
                 Set board size, then add pieces. Drag to reposition. Double-click to remove.
             </div>
             
-            <div style="display: flex; gap: 20px; justify-content: center; margin-bottom: 15px; font-size: 12px; flex-wrap: wrap;">
+            <div style="display: flex; gap: 20px; justify-content: center; margin-bottom: 15px; font-size: 12px; flex-wrap: wrap; align-items: flex-start;">
                 <label style="color: #aaa;">
-                    Dimensions: 
-                    <select id="boardDimension" style="margin-left: 5px; padding: 4px; background: #2a2a3e; border: 1px solid #4488ff; color: white; border-radius: 3px;" onchange="toggleDimension()">
-                        <option value="2D">2D</option>
-                        <option value="3D">3D</option>
+                    Board Type: 
+                    <select id="boardType" style="padding: 4px; background: #2a2a3e; border: 1px solid #4488ff; color: white; border-radius: 3px;" onchange="toggleBoardType()">
+                        <option value="rectangular">Rectangular</option>
+                        <option value="triangular">Triangular</option>
                     </select>
                 </label>
-                <label style="color: #aaa;">
-                    Width: 
-                    <input type="number" id="boardWidth" min="2" max="15" value="4" style="width: 50px; margin-left: 5px; padding: 4px; background: #2a2a3e; border: 1px solid #4488ff; color: white; border-radius: 3px;">
+                <label style="color: #aaa;" id="triangularShapeLabel" class="hidden">
+                    Shape: 
+                    <select id="triangularShape" style="margin-left: 5px; padding: 4px; background: #2a2a3e; border: 1px solid #4488ff; color: white; border-radius: 3px;" onchange="onBoardDimensionChange()">
+                        <option value="rhombus">Rhombus</option>
+                        <option value="triangle">Triangle</option>
+                    </select>
                 </label>
-                <label style="color: #aaa;">
-                    Height: 
-                    <input type="number" id="boardHeight" min="2" max="15" value="5" style="width: 50px; margin-left: 5px; padding: 4px; background: #2a2a3e; border: 1px solid #4488ff; color: white; border-radius: 3px;">
-                </label>
-                <label style="color: #aaa;" id="depthLabel" class="hidden">
-                    Depth: 
-                    <input type="number" id="boardDepth" min="2" max="15" value="3" style="width: 50px; margin-left: 5px; padding: 4px; background: #2a2a3e; border: 1px solid #4488ff; color: white; border-radius: 3px;">
-                </label>
-                <button class="palette-piece" onclick="updateBoardSize()" style="padding: 4px 12px; margin: 0;">Apply Size</button>
+                <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: center;">
+                    <label style="color: #aaa; display: flex; flex-direction: column; align-items: center;" id="dimensionLabel">
+                        <p  style="font-size: 12px; margin-bottom: 2px;">Dimensions:</p>
+                        <select id="boardDimension" style="padding: 4px; background: #2a2a3e; border: 1px solid #4488ff; color: white; border-radius: 3px; width: 60px;" onchange="toggleDimension()">
+                            <option value="2D">2D</option>
+                            <option value="3D">3D</option>
+                        </select>
+                    </label>
+                    <label style="color: #aaa; display: flex; flex-direction: column; align-items: center;">
+                        <p style="font-size: 12px; margin-bottom: 2px; transform: translateY(-6px);">Width:</p>
+                        <input type="number" id="boardWidth" min="2" max="15" value="3" style="width: 50px; padding: 4px; background: #2a2a3e; border: 1px solid #4488ff; color: white; border-radius: 3px;" onchange="onBoardDimensionChange()">
+                    </label>
+                    <label style="color: #aaa; display: flex; flex-direction: column; align-items: center;" id="heightLabel">
+                        <p style="font-size: 12px; margin-bottom: 2px; transform: translateY(-6px);">Height:</p>
+                        <input type="number" id="boardHeight" min="2" max="15" value="5" style="width: 50px; padding: 4px; background: #2a2a3e; border: 1px solid #4488ff; color: white; border-radius: 3px;">
+                    </label>
+                    <label style="color: #aaa; display: flex; flex-direction: column; align-items: center;" id="depthLabel" class="hidden">
+                        <p style="font-size: 12px; margin-bottom: 2px; transform: translateY(-6px);">Depth:</p>
+                        <input type="number" id="boardDepth" min="2" max="15" value="3" style="width: 50px; padding: 4px; background: #2a2a3e; border: 1px solid #4488ff; color: white; border-radius: 3px;">
+                    </label>
+                    <button class="palette-piece" onclick="updateBoardSize()"style="width: 100px; text-align: center; padding: 4px 8px; font-size: 12px; align-self: flex-end;"> Apply </button>
+                </div>
             </div>
             
-            <div class="piece-palette" style="margin-bottom: 20px;">
-                <strong style="display: block; width: 100%; text-align: center; margin-bottom: 10px; color: #aaa;">Add Custom Piece:</strong>
-                <div style="display: flex; gap: 10px; justify-content: center; align-items: center; flex-wrap: wrap; margin-bottom: 15px;">
-                    <label style="color: #aaa; font-size: 12px;">
-                        Width: 
-                        <input type="number" id="pieceWidth" min="1" max="4" value="1" style="width: 40px; padding: 4px; background: #2a2a3e; border: 1px solid #4488ff; color: white; border-radius: 3px;">
+            <div class="piece-palette" style="margin-bottom: 20px;" id="rectangularPiecePalette">
+                <div style="display: flex; align-items: center; gap: 15px; flex-wrap: wrap; margin-bottom: 15px;">
+                    <strong style="color: #aaa; white-space: nowrap;">Custom Piece:</strong>                
+                    <label style="color: #aaa; font-size: 12px; display: flex; flex-direction: column; align-items: left;">
+                        <span style="margin-bottom: 2px; transform: translateY(-6px);">Width:</span>
+                        <input type="number" id="pieceWidth" min="1" max="4" value="1" style="width: 50px; padding: 4px; background: #2a2a3e; border: 1px solid #4488ff; color: white; border-radius: 3px;">
                     </label>
-                    <label style="color: #aaa; font-size: 12px;">
-                        Height: 
-                        <input type="number" id="pieceHeight" min="1" max="5" value="1" style="width: 40px; padding: 4px; background: #2a2a3e; border: 1px solid #4488ff; color: white; border-radius: 3px;">
+                    <label style="color: #aaa; font-size: 12px; display: flex; flex-direction: column; align-items: left;">
+                        <span style="margin-bottom: 2px; transform: translateY(-6px);">Height:</span>
+                        <input type="number" id="pieceHeight" min="1" max="5" value="1" style="width: 50px; padding: 4px; background: #2a2a3e; border: 1px solid #4488ff; color: white; border-radius: 3px;">
                     </label>
-                    <label style="color: #aaa; font-size: 12px;" id="pieceDepthLabel" class="hidden">
-                        Depth: 
-                        <input type="number" id="pieceDepth" min="1" max="4" value="1" style="width: 40px; padding: 4px; background: #2a2a3e; border: 1px solid #4488ff; color: white; border-radius: 3px;">
+                    <label style="color: #aaa; font-size: 12px; display: flex; flex-direction: column; align-items: left;" id="pieceDepthLabel" class="hidden">
+                        <span style="margin-bottom: 2px; transform: translateY(-6px);">Depth:</span>
+                        <input type="number" id="pieceDepth" min="1" max="4" value="1" style="width: 50px; padding: 4px; background: #2a2a3e; border: 1px solid #4488ff; color: white; border-radius: 3px;">
                     </label>
-                    <button class="palette-piece" onclick="addCustomPiece()" style="padding: 6px 15px; margin: 0;">Add Piece</button>
+                    <button class="palette-piece" onclick="addCustomPiece()" style="width: 100px; text-align: center; padding: 4px 8px; font-size: 12px; align-self: flex-end;">Add</button>
                 </div>
-                <strong style="display: block; width: 100%; text-align: center; margin-bottom: 10px; color: #aaa; font-size: 11px;">Quick Add:</strong>
                 <div style="display: flex; gap: 15px; justify-content: center; flex-wrap: wrap;">
                     <div class="visual-piece big-piece" onclick="addPieceToBoard(2, 2)" title="Big 2×2">★</div>
                     <div class="visual-piece vertical-piece" onclick="addPieceToBoard(1, 2)" title="Vertical 1×2"></div>
@@ -584,27 +635,77 @@
                 </div>
                 <div id="drawModeInfo" style="display: none; text-align: center; margin-top: 10px; padding: 8px; background: #667eea; border-radius: 5px; color: white; font-size: 12px;">
                     <strong>Draw Mode Active:</strong> Click empty cells to draw shape. Click again to finish.<br>
-                    <span style="font-size: 10px; opacity: 0.9;">Tip: Only the cells you click are solid. Empty space inside shapes won't block other pieces.</span>
                 </div>
                 <div id="forbiddenModeInfo" style="display: none; text-align: center; margin-top: 10px; padding: 8px; background: #ff6b6b; border-radius: 5px; color: white; font-size: 12px;">
                     <strong>Forbidden Mode Active:</strong> Click and drag over cells to mark them as forbidden. Pieces cannot move to forbidden cells.<br>
-                    <span style="font-size: 10px; opacity: 0.9;">Forbidden cells will appear blacked out in the board state display.</span>
+                </div>
+            </div>
+            
+            <div class="piece-palette" style="margin-bottom: 20px; display: none;" id="triangularPiecePalette">
+                <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 15px; flex-wrap: wrap;">
+                    <strong style="color: #aaa;">Add Pieces:</strong>
+                    <!-- Piece 1: Single Triangle Upright (equilateral) -->
+                    <svg class="tri-piece-button" onclick="addTriPiece('mono')" title="Moniamond Up (1 triangle)" width="32" height="32" style="cursor: pointer; transition: transform 0.2s;">
+                        <polygon points="16,3 28,24 4,24" fill="#ff6b6b" stroke="#fff" stroke-width="1.5"/>
+                    </svg>
+                    
+                    <!-- Piece 2: Single Triangle Downward (equilateral) -->
+                    <svg class="tri-piece-button" onclick="addTriPiece('monoDown')" title="Moniamond Down (1 triangle)" width="32" height="32" style="cursor: pointer; transition: transform 0.2s;">
+                        <polygon points="4,3 28,3 16,24" fill="#ff9966" stroke="#fff" stroke-width="1.5"/>
+                    </svg>
+                    
+                    <!-- Piece 3: Diamond Horizontal (flush equilateral) -->
+                    <svg class="tri-piece-button" onclick="addTriPiece('domino')" title="Diamond Horizontal" width="52" height="32" style="cursor: pointer; transition: transform 0.2s;">
+                        <polygon points="16,3 28,24 4,24" fill="#96ceb4" stroke="#fff" stroke-width="1.5"/>
+                        <polygon points="16,3 40,3 28,24" fill="#96ceb4" stroke="#fff" stroke-width="1.5"/>
+                    </svg>
+                    
+                    <!-- Piece 4: Diamond Vertical (flush equilateral) -->
+                    <svg class="tri-piece-button" onclick="addTriPiece('domino2')" title="Diamond Vertical" width="32" height="48" style="cursor: pointer; transition: transform 0.2s;">
+                        <polygon points="14,3 26,24 2,24" fill="#f093fb" stroke="#fff" stroke-width="1.5"/>
+                        <polygon points="2,24 26,24 14,45" fill="#f093fb" stroke="#fff" stroke-width="1.5"/>
+                    </svg>
+                    
+                    <!-- Piece 5: Diamond Diagonal (flush equilateral - up then down) -->
+                    <svg class="tri-piece-button" onclick="addTriPiece('domino3')" title="Diamond Diagonal" width="52" height="32" style="cursor: pointer; transition: transform 0.2s;">
+                        <polygon points="28,3 40,24 16,24" fill="#4ecdc4" stroke="#fff" stroke-width="1.5"/>
+                        <polygon points="28,3 16,24 4,3" fill="#4ecdc4" stroke="#fff" stroke-width="1.5"/>
+                    </svg>
+                    
+                    <!-- Divider -->
+                    <div style="width: 2px; height: 40px; background: #555; margin: 0 5px;"></div>
+                    
+                    <!-- Custom Draw Button -->
+                    <div class="tri-piece-button" onclick="toggleTriDrawMode()" id="triDrawModeBtn" title="Draw Custom Triangular Shape" style="width: 0; height: 0; border-left: 30px solid transparent; border-right: 30px solid transparent; border-bottom: 52px solid #667eea; cursor: pointer; position: relative;">
+                        <div style="position: absolute; top: 35px; left: -15px; color: white; font-size: 20px; font-weight: bold;">✏</div>
+                    </div>
+                    
+                    <!-- Forbidden Cells Button -->
+                    <div class="tri-piece-button" onclick="toggleTriForbiddenMode()" id="triForbiddenModeBtn" title="Mark Forbidden Triangular Cells" style="width: 0; height: 0; border-left: 30px solid transparent; border-right: 30px solid transparent; border-bottom: 52px solid #ff6b6b; cursor: pointer; position: relative;">
+                        <div style="position: absolute; top: 35px; left: -15px; color: white; font-size: 16px; font-weight: bold;">🚫</div>
+                    </div>
+                </div>
+                <div id="triDrawModeInfo" style="display: none; text-align: center; margin-top: 10px; padding: 8px; background: #667eea; border-radius: 5px; color: white; font-size: 12px;">
+                    <strong>Triangular Draw Mode Active:</strong> Click triangular cells to draw shape. Click again to finish.<br>
+                </div>
+                <div id="triForbiddenModeInfo" style="display: none; text-align: center; margin-top: 10px; padding: 8px; background: #ff6b6b; border-radius: 5px; color: white; font-size: 12px;">
+                    <strong>Forbidden Mode Active:</strong> Click triangular cells to mark as forbidden (prevents pieces from being moved there).<br>
                 </div>
             </div>
             
             <div id="layerControls" class="hidden" style="text-align: center; margin: 10px 0; padding: 10px; background: #1a1a2e; border-radius: 5px;">
-                <label style="color: #aaa; margin-right: 10px;">Viewing Layer:</label>
-                <button onclick="changeLayer(-1)" style="padding: 5px 12px; background: #4488ff; border: none; color: white; border-radius: 3px; cursor: pointer; margin: 0 5px;">◀ Back</button>
-                <span id="currentLayer" style="color: white; font-weight: bold; margin: 0 10px;">Layer 0</span>
-                <button onclick="changeLayer(1)" style="padding: 5px 12px; background: #4488ff; border: none; color: white; border-radius: 3px; cursor: pointer; margin: 0 5px;">Front ▶</button>
-                <span style="color: #888; font-size: 11px; margin-left: 15px;">Pieces can move between layers</span>
+                <div style="display: flex; align-items: center; justify-content: center; gap: 8px;">
+                    <button onclick="changeLayer(-1)" style="padding: 4px 8px; background: #4488ff; border: none; color: white; border-radius: 3px; cursor: pointer; font-size: 12px;">◀</button>
+                    <span id="currentLayer" style="color: white; font-weight: bold; padding-left: 30px; padding-right: 30px;">  Layer 0  </span>
+                    <button onclick="changeLayer(1)" style="padding: 4px 8px; background: #4488ff; border: none; color: white; border-radius: 3px; cursor: pointer; font-size: 12px;">▶</button>
+                </div>
             </div>
             
             <div class="editor-grid" id="editorGrid"></div>
             
-            <div class="piece-palette" style="margin-top: 15px;">
-                <button class="palette-piece" onclick="loadPreset('default')">Load Default</button>
-                <button class="palette-piece" onclick="clearBoard()">Clear All</button>
+            <div class="editor-buttons">
+                <button onclick="loadPreset('default')">Load Default</button>
+                <button onclick="clearBoard()">Clear All</button>
             </div>
             
             <div class="editor-buttons">
@@ -659,12 +760,7 @@
             <button id="exportCudaBtn">Export Graph with Layout</button>
             <button id="importCudaBtn">Import Graph Layout</button>
             <div style="margin-top: 10px; font-size: 12px;">
-                <label style="display: flex; align-items: center; cursor: pointer;">
-                    <input type="checkbox" id="showNodesToggle" style="margin-right: 8px; cursor: pointer;">
-                    <span>Show All Nodes</span>
-                </label>
             </div>
-            <hr>
             <div class="collapsible" id="paramsToggle">
                 <strong>Force Parameters</strong>
             </div>
@@ -781,7 +877,7 @@
             <div class="legend">
                 <strong>Legend</strong>
                 <div class="legend-item">
-                    <div class="legend-color" style="background: #ff4444;"></div>
+                    <div class="legend-color" style="background: #ab44ff;"></div>
                     <span>Initial State</span>
                 </div>
                 <div class="legend-item">
@@ -791,10 +887,6 @@
                 <div class="legend-item">
                     <div class="legend-color" style="background: #00ff00;"></div>
                     <span>Winning State</span>
-                </div>
-                <div class="legend-item">
-                    <div class="legend-color" style="background: #ffff00;"></div>
-                    <span>Selected</span>
                 </div>
             </div>
         </div>
@@ -835,7 +927,7 @@
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
     
     <!-- Game Logic and Visualization -->
-    <script src="klotski.js"></script>
+    <script src="klotski.js?v=tri-moves-dev-2026-03-13-1"></script>
     <script src="visualization.js"></script>
     <script src="symmetry.js"></script>
     
@@ -875,8 +967,18 @@
         let currentGraph;
 
         function init() {
-            visualizer = new GraphVisualizer('container');
-            visualizer.start();
+            try {
+                console.log('Initializing application...');
+                if (typeof GraphVisualizer === 'undefined') {
+                    console.error('GraphVisualizer is not defined. Make sure visualization.js is loaded.');
+                    return;
+                }
+                visualizer = new GraphVisualizer('container');
+                visualizer.start();
+                console.log('Application initialized successfully');
+            } catch (error) {
+                console.error('Error initializing application:', error);
+            }
         }
 
         function generateGraph() {
@@ -901,11 +1003,36 @@
             setTimeout(() => {
                 try {
                     console.log('=== Starting Graph Generation ===');
-                    const initialState = customStartState || KlotskiState.createInitial();
-                    console.log('Initial state created:', initialState);
-                    const dimStr = initialState.is3D ? `${initialState.width}x${initialState.height}x${initialState.depth}` : `${initialState.width}x${initialState.height}`;
-                    console.log('Board size:', dimStr, '| is3D:', initialState.is3D);
-                    console.log('Blocks:', initialState.blocks.length);
+                    
+                    let initialState;
+                    if (isTriangularMode) {
+                        // Use custom start state if it exists, otherwise create from editor
+                        if (customStartState && customStartState.pieces) {
+                            initialState = customStartState;
+                            console.log('Using custom triangular state:', initialState);
+                            console.log('Pieces:', initialState.pieces.length);
+                        } else {
+                            // Create triangular state from editor
+                            if (!triBoard || triPieces.length === 0) {
+                                alert('Please add at least one piece to the triangular board.');
+                                loadingElement.classList.add('hidden');
+                                return;
+                            }
+                            initialState = new TriKlotskiState(triPieces, triBoard, triForbiddenCells);
+                            console.log('Triangular state created from editor:', initialState);
+                            console.log('Board size:', triBoard.rows, 'x', triBoard.cols);
+                            console.log('Pieces:', triPieces.length);
+                            console.log('Forbidden cells:', triForbiddenCells.length);
+                        }
+                    } else {
+                        // Rectangular mode
+                        initialState = customStartState || KlotskiState.createInitial();
+                        console.log('Initial state created:', initialState);
+                        const dimStr = initialState.is3D ? `${initialState.width}x${initialState.height}x${initialState.depth}` : `${initialState.width}x${initialState.height}`;
+                        console.log('Board size:', dimStr, '| is3D:', initialState.is3D);
+                        console.log('Blocks:', initialState.blocks.length);
+                    }
+                    
                     console.log('Treat same-shaped pieces as unique:', treatShapesAsUnique);
                     
                     const graph = new StateSpaceGraph();
@@ -1089,34 +1216,86 @@
         }
 
         function openEditor() {
-            document.getElementById('boardEditor').classList.add('active');
-            // Start with blank board (just needs valid structure)
+            console.log('openEditor() called');
+            try {
+                document.getElementById('boardEditor').classList.add('active');
+                console.log('Board editor opened successfully');
+            } catch (error) {
+                console.error('Error opening board editor:', error);
+            }
+            
+            // Check if we have a custom start state
             if (customStartState) {
-                editorState = customStartState.clone();
-                boardWidth = editorState.width;
-                boardHeight = editorState.height;
-                boardDepth = editorState.depth || 1;
-                is3D = editorState.is3D || false;
-                
-                // Update UI to match
-                document.getElementById('boardDimension').value = is3D ? '3D' : '2D';
-                if (is3D) {
-                    document.getElementById('depthLabel').classList.remove('hidden');
-                    document.getElementById('pieceDepthLabel').classList.remove('hidden');
-                    document.getElementById('layerControls').classList.remove('hidden');
+                // Check if it's a triangular state
+                if (customStartState.pieces && customStartState.board && customStartState.grid) {
+                    // Triangular mode
+                    isTriangularMode = true;
+                    triBoard = customStartState.board;
+                    triPieces = customStartState.pieces.map(p => ({...p}));
+                    nextTriPieceId = triPieces.length > 0 ? Math.max(...triPieces.map(p => p.id)) + 1 : 0;
+                    
+                    // Update UI for triangular mode
+                    document.getElementById('boardType').value = 'triangular';
+                    // For triangular board, width is based on cols (divided by 2 since we use size*2)
+                    const triSize = Math.floor(triBoard.cols / 2);
+                    document.getElementById('boardWidth').value = triSize || 3;
+                    document.getElementById('rectangularPiecePalette').style.display = 'none';
+                    document.getElementById('triangularPiecePalette').style.display = 'block';
+                    document.getElementById('dimensionLabel').style.display = 'none';
+                    document.getElementById('triangularShapeLabel').classList.remove('hidden');
+                    document.getElementById('heightLabel').style.display = 'none';
+                } else {
+                    // Rectangular mode
+                    isTriangularMode = false;
+                    editorState = customStartState.clone();
+                    boardWidth = editorState.width;
+                    boardHeight = editorState.height;
+                    boardDepth = editorState.depth || 1;
+                    is3D = editorState.is3D || false;
+                    
+                    // Update UI to match
+                    document.getElementById('boardType').value = 'rectangular';
+                    document.getElementById('boardDimension').value = is3D ? '3D' : '2D';
+                    if (is3D) {
+                        document.getElementById('depthLabel').classList.remove('hidden');
+                        document.getElementById('pieceDepthLabel').classList.remove('hidden');
+                        document.getElementById('layerControls').classList.remove('hidden');
+                    }
+                    
+                    nextBlockId = editorState.blocks.length > 0 ? Math.max(...editorState.blocks.map(b => b.id)) + 1 : 0;
+                    document.getElementById('boardWidth').value = boardWidth;
+                    document.getElementById('boardHeight').value = boardHeight;
+                    if (is3D) {
+                        document.getElementById('boardDepth').value = boardDepth;
+                    }
                 }
-                
-                nextBlockId = editorState.blocks.length > 0 ? Math.max(...editorState.blocks.map(b => b.id)) + 1 : 0;
             } else {
+                // No custom state - start with defaults
+                isTriangularMode = false;
                 editorState = new KlotskiState([], boardWidth, boardHeight, boardDepth);
                 nextBlockId = 0;
+                
+                // Initialize triangular mode variables
+                triBoard = null;
+                triPieces = [];
+                triDrawMode = false;
+                triDrawingCells = [];
+                nextTriPieceId = 0;
+                
+                document.getElementById('boardType').value = 'rectangular';
+                document.getElementById('boardWidth').value = boardWidth;
+                document.getElementById('boardHeight').value = boardHeight;
+                if (is3D) {
+                    document.getElementById('boardDepth').value = boardDepth;
+                }
             }
-            document.getElementById('boardWidth').value = boardWidth;
-            document.getElementById('boardHeight').value = boardHeight;
-            if (is3D) {
-                document.getElementById('boardDepth').value = boardDepth;
+            
+            try {
+                renderEditorBoard();
+            } catch (error) {
+                console.error('Error rendering editor board:', error);
+                alert('Error rendering editor board. Please check the console for details.');
             }
-            renderEditorBoard();
         }
         
         function updateBoardSize() {
@@ -1188,6 +1367,23 @@
         let isDraggingInForbiddenMode = false;
         let forbiddenStartCell = null;
         let forbiddenModeAction = 'add'; // 'add' or 'remove'
+        
+        // Triangular board mode state
+        let isTriangularMode = false;
+        let triBoard = null;
+        let triPieces = [];
+        let triDrawMode = false;
+        let triDrawingCells = [];
+        let isDraggingInTriDrawMode = false;
+        let triDrawStartCell = null;
+        let triDrawModeAction = 'add'; // 'add' or 'remove'
+        let triForbiddenMode = false;
+        let triForbiddenCells = [];
+        let isDraggingInTriForbiddenMode = false;
+        let triForbiddenStartCell = null;
+        let triForbiddenModeAction = 'add';
+        let nextTriPieceId = 0;
+        let draggedTriPiece = null;
         
         function toggleDrawMode() {
             drawMode = !drawMode;
@@ -1261,6 +1457,327 @@
             renderEditorBoard();
         }
         
+        // Triangular board functions
+        function onBoardDimensionChange() {
+            if (isTriangularMode) {
+                // Reinitialize triangular board with new dimensions
+                toggleBoardType();
+            } else {
+                // Update rectangular board dimensions
+                const width = parseInt(document.getElementById('boardWidth').value);
+                const height = parseInt(document.getElementById('boardHeight').value);
+                const depth = is3D ? parseInt(document.getElementById('boardDepth').value) : 1;
+                
+                boardWidth = width;
+                boardHeight = height;
+                boardDepth = depth;
+                
+                // Recreate the board with new dimensions
+                editorState = new KlotskiState([], width, height, depth);
+                nextBlockId = 0;
+                renderEditorBoard();
+            }
+        }
+        
+        function toggleBoardType() {
+            const boardType = document.getElementById('boardType').value;
+            isTriangularMode = (boardType === 'triangular');
+            
+            // Show/hide appropriate palettes
+            const rectPalette = document.getElementById('rectangularPiecePalette');
+            const triPalette = document.getElementById('triangularPiecePalette');
+            const dimensionLabel = document.getElementById('dimensionLabel');
+            const triangularShapeLabel = document.getElementById('triangularShapeLabel');
+            const heightLabel = document.getElementById('heightLabel');
+            
+            if (isTriangularMode) {
+                rectPalette.style.display = 'none';
+                triPalette.style.display = 'block';
+                dimensionLabel.style.display = 'none';
+                triangularShapeLabel.classList.remove('hidden');
+                heightLabel.style.display = 'none';
+                
+                // Hide depth controls in triangular mode
+                const depthLabel = document.getElementById('depthLabel');
+                const pieceDepthLabel = document.getElementById('pieceDepthLabel');
+                if (depthLabel) depthLabel.style.display = 'none';
+                if (pieceDepthLabel) pieceDepthLabel.style.display = 'none';
+                
+                // Hide 3D layer controls in triangular mode
+                const layerControls = document.getElementById('layerControls');
+                if (layerControls) {
+                    layerControls.classList.add('hidden');
+                }
+                
+                // Initialize triangular board with selected shape
+                const size = parseInt(document.getElementById('boardWidth').value);
+                const shape = document.getElementById('triangularShape').value;
+                
+                try {
+                    // Create board with selected shape
+                    triBoard = new TriBoard(size * 2, size * 2, null, 40, shape);
+                    triPieces = [];
+                    triForbiddenCells = [];  // Clear forbidden cells
+                    triDrawingCells = [];    // Clear drawing cells
+                    nextTriPieceId = 0;
+                    
+                    console.log(`Created rhombus board: ${size}x${size} triangles, ${triBoard.validCells.size} cells`);
+                    
+                    // Clear rectangular state
+                    editorState = null;
+                } catch (error) {
+                    console.error('Error initializing triangular board:', error);
+                    alert('Error initializing triangular board. Please check the console for details.');
+                    return;
+                }
+            } else {
+                rectPalette.style.display = 'block';
+                triPalette.style.display = 'none';
+                dimensionLabel.style.display = 'block';
+                triangularShapeLabel.classList.add('hidden');
+                heightLabel.style.display = 'block';
+                
+                // Show depth controls in rectangular mode
+                const depthLabel = document.getElementById('depthLabel');
+                const pieceDepthLabel = document.getElementById('pieceDepthLabel');
+                if (depthLabel) depthLabel.style.display = '';
+                if (pieceDepthLabel) pieceDepthLabel.style.display = '';
+                const widthInput = document.getElementById('boardWidth');
+                const heightInput = document.getElementById('boardHeight');
+                if (widthInput.value === '3') {
+                    widthInput.value = '4';  // Default rectangular width
+                }
+                if (!heightInput.value || heightInput.value === '3') {
+                    heightInput.value = '5';  // Default rectangular height
+                }
+                
+                // Initialize rectangular board
+                const width = parseInt(widthInput.value);
+                const height = parseInt(heightInput.value);
+                const depth = is3D ? parseInt(document.getElementById('boardDepth').value) : 1;
+                
+                // Update global board dimensions
+                boardWidth = width;
+                boardHeight = height;
+                boardDepth = depth;
+                
+                editorState = new KlotskiState([], width, height, depth);
+                nextBlockId = 0;
+                
+                // Clear triangular state
+                triBoard = null;
+                triPieces = [];
+            }
+            
+            renderEditorBoard();
+        }
+        
+        function addTriPiece(type) {
+            if (!isTriangularMode || !triBoard) return;
+            
+            let offsets;
+            let name;
+            
+            switch (type) {
+                case 'mono':
+                    // Single triangle upright (△)
+                    offsets = [[0, 0]];
+                    name = 'Moniamond Up';
+                    break;
+                case 'monoDown':
+                    // Single triangle downward (▽)
+                    // This will have baseParity = 1 to make it upside down
+                    offsets = [[0, 0]];
+                    name = 'Moniamond Down';
+                    break;
+                case 'domino':
+                    // Two triangles horizontal (△ ▽)
+                    offsets = [[0, 0], [0, 1]];
+                    name = 'Diamond H';
+                    break;
+                case 'domino2':
+                    // Two triangles vertical (△ on top, ▽ below)
+                    offsets = [[0, 0], [1, 0]];
+                    name = 'Diamond V';
+                    break;
+                case 'domino3':
+                    // Two triangles horizontal flipped (▽ △) - opposite of domino
+                    offsets = [[0, 0], [0, 1]];
+                    name = 'Diamond H Flip';
+                    break;
+                default:
+                    return;
+            }
+            
+            const piece = new TriPiece(nextTriPieceId, offsets, name);
+            
+            // For monoDown and domino3 (flipped), prefer baseParity = 1 (downward orientation)
+            const preferredParity = (type === 'monoDown' || type === 'domino3') ? 1 : null;
+            
+            // Find empty spot
+            const spot = findEmptyTriSpot(piece, preferredParity);
+            if (spot) {
+                triPieces.push({
+                    id: nextTriPieceId,
+                    row: spot.row,
+                    col: spot.col,
+                    baseParity: spot.baseParity || 0,
+                    piece: piece
+                });
+                nextTriPieceId++;
+                renderEditorBoard();
+            } else {
+                alert('No empty spot found for this piece!');
+            }
+        }
+        
+        function findEmptyTriSpot(piece, preferredBaseParity = null) {
+            if (!triBoard) return null;
+            
+            // Create spatial hash of occupied cells (row, col, parity)
+            const occupiedCells = new Map();
+            for (const pieceState of triPieces) {
+                const cells = pieceState.piece.getOccupiedCells(pieceState.row, pieceState.col, pieceState.baseParity || 0);
+                for (const { row, col, parity } of cells) {
+                    occupiedCells.set(`${row},${col},${parity}`, pieceState.id);
+                }
+            }
+            
+            // Try to find a spot on any valid cell with either parity
+            const cells = triBoard.getAllCells();
+            
+            console.log(`Looking for spot for piece with ${piece.offsets.length} cells`);
+            console.log(`Board has ${cells.length} available cells`);
+            console.log(`Currently ${occupiedCells.size} triangles occupied`);
+            
+            // Try both parities, but prefer the one specified
+            const parities = preferredBaseParity !== null ? [preferredBaseParity, 1 - preferredBaseParity] : [0, 1];
+            
+            for (const baseParity of parities) {
+                for (const { row, col } of cells) {
+                    if (piece.canPlaceAt(row, col, baseParity, triBoard, occupiedCells, -1)) {
+                        // Check if any cells of this piece would be forbidden
+                        const pieceCells = piece.getOccupiedCells(row, col, baseParity);
+                        const isForbidden = pieceCells.some(cell => 
+                            triForbiddenCells.some(f => 
+                                f.row === cell.row && f.col === cell.col && f.parity === cell.parity
+                            )
+                        );
+                        
+                        if (!isForbidden) {
+                            console.log(`Found spot at (${row}, ${col}), baseParity=${baseParity}`);
+                            return { row, col, baseParity };
+                        }
+                    }
+                }
+            }
+            
+            console.log('No valid spot found for piece');
+            return null;
+        }
+        
+        function toggleTriDrawMode() {
+            triDrawMode = !triDrawMode;
+            const btn = document.getElementById('triDrawModeBtn');
+            const info = document.getElementById('triDrawModeInfo');
+            
+            // Turn off forbidden mode if active
+            if (triDrawMode && triForbiddenMode) {
+                toggleTriForbiddenMode();
+            }
+            
+            if (triDrawMode) {
+                btn.style.borderBottomColor = '#ff4444';
+                btn.querySelector('div').textContent = '✓';
+                info.style.display = 'block';
+                triDrawingCells = [];
+            } else {
+                btn.style.borderBottomColor = '#667eea';
+                btn.querySelector('div').textContent = '✏';
+                info.style.display = 'none';
+                
+                // Finish drawing if we have cells
+                if (triDrawingCells.length > 0) {
+                    finishTriDrawing();
+                }
+                triDrawingCells = [];
+            }
+            renderEditorBoard();
+        }
+        
+        function toggleTriForbiddenMode() {
+            triForbiddenMode = !triForbiddenMode;
+            const btn = document.getElementById('triForbiddenModeBtn');
+            const info = document.getElementById('triForbiddenModeInfo');
+            
+            // Turn off draw mode if active
+            if (triForbiddenMode && triDrawMode) {
+                toggleTriDrawMode();
+            }
+            
+            if (triForbiddenMode) {
+                btn.style.borderBottomColor = '#ff4444';
+                btn.querySelector('div').textContent = '✓';
+                info.style.display = 'block';
+            } else {
+                btn.style.borderBottomColor = '#ff6b6b';
+                btn.querySelector('div').textContent = '🚫';
+                info.style.display = 'none';
+            }
+            renderEditorBoard();
+        }
+        
+        function finishTriDrawing() {
+            if (triDrawingCells.length === 0) return;
+            
+            // Find the anchor cell (top-left)
+            const minRow = Math.min(...triDrawingCells.map(c => c.row));
+            const minCol = Math.min(...triDrawingCells.map(c => c.col));
+            
+            // Find the anchor cell's actual parity from the drawn cells
+            const anchorCell = triDrawingCells.find(c => c.row === minRow && c.col === minCol);
+            const anchorGridParity = triBoard.grid.getParity(minRow, minCol);
+            const anchorDrawnParity = anchorCell ? anchorCell.parity : anchorGridParity;
+            
+            // Calculate baseParity: what baseParity would make the anchor have its drawn parity?
+            // If anchor is at (minRow, minCol) with offset (0, 0), relativeParity = 0
+            // actualParity = (baseParity + 0) % 2 = baseParity
+            // So baseParity should equal the anchor's drawn parity
+            const baseParity = anchorDrawnParity;
+            
+            // Create offsets
+            const offsets = triDrawingCells.map(cell => [
+                cell.row - minRow,
+                cell.col - minCol
+            ]);
+            
+            // Create the piece
+            const piece = new TriPiece(nextTriPieceId, offsets, 'Custom Shape');
+            
+            // Place piece EXACTLY where it was drawn (not in a random empty spot!)
+            // Check if the drawn location is valid and empty
+            const canPlace = piece.canPlaceAt(minRow, minCol, baseParity, triBoard, new Map(), -1, triForbiddenCells);
+            
+            if (canPlace) {
+                triPieces.push({
+                    id: nextTriPieceId,
+                    row: minRow,
+                    col: minCol,
+                    baseParity: baseParity,
+                    piece: piece
+                });
+                nextTriPieceId++;
+                console.log('✓ Added custom triangular shape at drawn location:', piece);
+                console.log(`  Position: (${minRow}, ${minCol}), baseParity: ${baseParity}`);
+                console.log(`  Anchor drawn parity: ${anchorDrawnParity}, Cells:`, offsets);
+            } else {
+                alert('Cannot place piece here - location is blocked or invalid!');
+            }
+            
+            triDrawingCells = [];
+            renderEditorBoard();
+        }
+        
         // Add global mouse up handler for draw mode
         document.addEventListener('mouseup', () => {
             if (isDraggingInDrawMode) {
@@ -1270,6 +1787,14 @@
             if (isDraggingInForbiddenMode) {
                 isDraggingInForbiddenMode = false;
                 forbiddenStartCell = null;
+            }
+            if (isDraggingInTriDrawMode) {
+                isDraggingInTriDrawMode = false;
+                triDrawStartCell = null;
+            }
+            if (isDraggingInTriForbiddenMode) {
+                isDraggingInTriForbiddenMode = false;
+                triForbiddenStartCell = null;
             }
         });
         
@@ -1317,9 +1842,21 @@
             const grid = document.getElementById('editorGrid');
             grid.innerHTML = '';
             
-            // Update grid template
+            if (isTriangularMode && triBoard) {
+                renderTriangularBoard(grid);
+                return;
+            }
+            
+            // Remove triangular class and restore grid layout
+            grid.classList.remove('triangular');
+            grid.style.cssText = ''; // Reset all inline styles
+            grid.style.display = 'grid';
             grid.style.gridTemplateColumns = `repeat(${boardWidth}, 60px)`;
             grid.style.gridTemplateRows = `repeat(${boardHeight}, 60px)`;
+            grid.style.gap = '2px';
+            grid.style.padding = '10px';
+            grid.style.background = '#0f0f1e';
+            grid.style.borderRadius = '5px';
 
             // Create grid cells
             for (let y = 0; y < boardHeight; y++) {
@@ -1706,6 +2243,484 @@
             });
         }
         
+        function renderTriangularBoard(grid) {
+            if (!triBoard) return;
+            
+            // Add triangular class and clear grid template
+            grid.classList.add('triangular');
+            grid.style.gridTemplateColumns = '';
+            grid.style.gridTemplateRows = '';
+            grid.style.display = 'block';
+            grid.style.position = 'relative';
+            
+            const cells = triBoard.getAllCells();
+            const bounds = triBoard.getPixelBounds();
+            
+            // Set grid container size based on pixel bounds
+            const padding = 40;
+            const gridWidth = bounds.maxX - bounds.minX + padding * 2;
+            const gridHeight = bounds.maxY - bounds.minY + padding * 2;
+            grid.style.width = `${gridWidth}px`;
+            grid.style.height = `${gridHeight}px`;
+            
+            // Render triangular grid cells
+            for (const { row, col } of cells) {
+                const vertices = triBoard.grid.getTriangleVertices(row, col);
+                const parity = triBoard.grid.getParity(row, col);
+                
+                const cell = document.createElement('div');
+                cell.className = 'tri-grid-cell';
+                cell.dataset.row = row;
+                cell.dataset.col = col;
+                
+                // Calculate bounding box for the triangle
+                const minX = Math.min(...vertices.map(v => v.x));
+                const maxX = Math.max(...vertices.map(v => v.x));
+                const minY = Math.min(...vertices.map(v => v.y));
+                const maxY = Math.max(...vertices.map(v => v.y));
+                
+                // Position relative to bounds with padding
+                const x = minX - bounds.minX + padding;
+                const y = minY - bounds.minY + padding;
+                const width = maxX - minX;
+                const height = maxY - minY;
+                
+                cell.style.cssText = `
+                    position: absolute;
+                    left: ${x}px;
+                    top: ${y}px;
+                    width: ${width}px;
+                    height: ${height}px;
+                    background: #1a1a2e;
+                    border: 1px solid #2a2a3e;
+                    cursor: pointer;
+                    z-index: 1;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    font-size: 10px;
+                    color: #666;
+                    box-sizing: border-box;
+                `;
+                
+                // Add triangle clip path for correct orientation
+                if (parity === 0) {
+                    cell.style.clipPath = 'polygon(50% 0%, 0% 100%, 100% 100%)';
+                    cell.textContent = '△';
+                } else {
+                    cell.style.clipPath = 'polygon(0% 0%, 100% 0%, 50% 100%)';
+                    cell.textContent = '▽';
+                }
+                
+                // Add event listeners for triangular draw mode or forbidden mode
+                if (triDrawMode) {
+                    cell.style.cursor = 'crosshair';
+                    
+                    cell.addEventListener('mousedown', (e) => {
+                        e.stopPropagation();
+                        e.preventDefault();
+                        isDraggingInTriDrawMode = true;
+                        triDrawStartCell = { row: parseInt(cell.dataset.row), col: parseInt(cell.dataset.col) };
+                        
+                        const cellRow = parseInt(cell.dataset.row);
+                        const cellCol = parseInt(cell.dataset.col);
+                        const cellParity = triBoard.grid.getParity(cellRow, cellCol);
+                        
+                        // Toggle cell in drawing and set action mode
+                        const idx = triDrawingCells.findIndex(c => c.row === cellRow && c.col === cellCol);
+                        if (idx >= 0) {
+                            triDrawingCells.splice(idx, 1);
+                            triDrawModeAction = 'remove';
+                        } else {
+                            triDrawingCells.push({ row: cellRow, col: cellCol, parity: cellParity });
+                            triDrawModeAction = 'add';
+                        }
+                        
+                        renderEditorBoard();
+                    });
+                    
+                    // Mouse enter - continue dragging
+                    cell.addEventListener('mouseenter', (e) => {
+                        if (!isDraggingInTriDrawMode) return;
+                        
+                        const cellRow = parseInt(cell.dataset.row);
+                        const cellCol = parseInt(cell.dataset.col);
+                        const cellParity = triBoard.grid.getParity(cellRow, cellCol);
+                        
+                        const idx = triDrawingCells.findIndex(c => c.row === cellRow && c.col === cellCol);
+                        
+                        if (triDrawModeAction === 'add' && idx < 0) {
+                            triDrawingCells.push({ row: cellRow, col: cellCol, parity: cellParity });
+                            renderEditorBoard();
+                        } else if (triDrawModeAction === 'remove' && idx >= 0) {
+                            triDrawingCells.splice(idx, 1);
+                            renderEditorBoard();
+                        }
+                    });
+                } else if (triForbiddenMode) {
+                    cell.style.cursor = 'not-allowed';
+                    
+                    cell.addEventListener('mousedown', (e) => {
+                        e.stopPropagation();
+                        e.preventDefault();
+                        isDraggingInTriForbiddenMode = true;
+                        triForbiddenStartCell = { row: parseInt(cell.dataset.row), col: parseInt(cell.dataset.col) };
+                        
+                        const cellRow = parseInt(cell.dataset.row);
+                        const cellCol = parseInt(cell.dataset.col);
+                        const cellParity = triBoard.grid.getParity(cellRow, cellCol);
+                        
+                        // Toggle forbidden cell and set action mode
+                        const idx = triForbiddenCells.findIndex(c => c.row === cellRow && c.col === cellCol && c.parity === cellParity);
+                        if (idx >= 0) {
+                            triForbiddenCells.splice(idx, 1);
+                            triForbiddenModeAction = 'remove';
+                        } else {
+                            triForbiddenCells.push({ row: cellRow, col: cellCol, parity: cellParity });
+                            triForbiddenModeAction = 'add';
+                        }
+                        
+                        renderEditorBoard();
+                    });
+                    
+                    // Mouse enter - continue dragging
+                    cell.addEventListener('mouseenter', (e) => {
+                        if (!isDraggingInTriForbiddenMode) return;
+                        
+                        const cellRow = parseInt(cell.dataset.row);
+                        const cellCol = parseInt(cell.dataset.col);
+                        const cellParity = triBoard.grid.getParity(cellRow, cellCol);
+                        
+                        const idx = triForbiddenCells.findIndex(c => c.row === cellRow && c.col === cellCol && c.parity === cellParity);
+                        
+                        if (triForbiddenModeAction === 'add' && idx < 0) {
+                            triForbiddenCells.push({ row: cellRow, col: cellCol, parity: cellParity });
+                            renderEditorBoard();
+                        } else if (triForbiddenModeAction === 'remove' && idx >= 0) {
+                            triForbiddenCells.splice(idx, 1);
+                            renderEditorBoard();
+                        }
+                    });
+                }
+                
+                grid.appendChild(cell);
+            }
+            
+            // Draw triangular pieces
+            for (const pieceState of triPieces) {
+                const cells = pieceState.piece.getOccupiedCells(pieceState.row, pieceState.col, pieceState.baseParity || 0);
+                
+                for (const { row, col, parity } of cells) {
+                    const vertices = triBoard.grid.getTriangleVertices(row, col);
+                    // Use the parity from the piece, not the grid!
+                    
+                    const pieceDiv = document.createElement('div');
+                    pieceDiv.className = 'tri-piece';
+                    pieceDiv.dataset.pieceId = pieceState.id;
+                    pieceDiv.dataset.row = row;
+                    pieceDiv.dataset.col = col;
+                    
+                    // Calculate bounding box
+                    const minX = Math.min(...vertices.map(v => v.x));
+                    const maxX = Math.max(...vertices.map(v => v.x));
+                    const minY = Math.min(...vertices.map(v => v.y));
+                    const maxY = Math.max(...vertices.map(v => v.y));
+                    
+                    // Position relative to bounds with padding
+                    const x = minX - bounds.minX + padding;
+                    const y = minY - bounds.minY + padding;
+                    const width = maxX - minX;
+                    const height = maxY - minY;
+                    
+                    // Generate piece color based on ID
+                    const hue = (pieceState.id * 137.5) % 360;
+                    const color = `hsl(${hue}, 70%, 60%)`;
+                    
+                    pieceDiv.style.cssText = `
+                        position: absolute;
+                        left: ${x}px;
+                        top: ${y}px;
+                        width: ${width}px;
+                        height: ${height}px;
+                        background: ${color};
+                        border: 2px solid rgba(255, 255, 255, 0.3);
+                        cursor: ${triDrawMode ? 'default' : 'move'};
+                        z-index: 10;
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                        font-size: 12px;
+                        color: white;
+                        font-weight: bold;
+                        box-sizing: border-box;
+                    `;
+                    
+                    // Add triangle clip path
+                    if (parity === 0) {
+                        pieceDiv.style.clipPath = 'polygon(50% 0%, 0% 100%, 100% 100%)';
+                    } else {
+                        pieceDiv.style.clipPath = 'polygon(0% 0%, 100% 0%, 50% 100%)';
+                    }
+                    
+                    // Add drag functionality (only when not in draw mode)
+                    if (!triDrawMode) {
+                        pieceDiv.addEventListener('mousedown', (e) => {
+                            e.stopPropagation();
+                            e.preventDefault();
+                            startTriDrag(e, pieceState);
+                        });
+                        
+                        // Add double-click to remove
+                        pieceDiv.addEventListener('dblclick', (e) => {
+                            e.stopPropagation();
+                            e.preventDefault();
+                            const index = triPieces.findIndex(p => p.id === pieceState.id);
+                            if (index >= 0) {
+                                triPieces.splice(index, 1);
+                                renderEditorBoard();
+                            }
+                        });
+                    }
+                    
+                    grid.appendChild(pieceDiv);
+                }
+            }
+            
+            // Draw preview cells for triangular draw mode
+            if (triDrawMode) {
+                for (const { row, col } of triDrawingCells) {
+                    const vertices = triBoard.grid.getTriangleVertices(row, col);
+                    const parity = triBoard.grid.getParity(row, col);
+                    
+                    // Calculate bounding box
+                    const minX = Math.min(...vertices.map(v => v.x));
+                    const maxX = Math.max(...vertices.map(v => v.x));
+                    const minY = Math.min(...vertices.map(v => v.y));
+                    const maxY = Math.max(...vertices.map(v => v.y));
+                    
+                    // Position relative to bounds with padding
+                    const x = minX - bounds.minX + padding;
+                    const y = minY - bounds.minY + padding;
+                    const width = maxX - minX;
+                    const height = maxY - minY;
+                    
+                    const previewDiv = document.createElement('div');
+                    previewDiv.style.cssText = `
+                        position: absolute;
+                        left: ${x}px;
+                        top: ${y}px;
+                        width: ${width}px;
+                        height: ${height}px;
+                        background: rgba(102, 126, 234, 0.6);
+                        border: 2px solid #667eea;
+                        z-index: 5;
+                        pointer-events: none;
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                        font-size: 10px;
+                        color: white;
+                        box-sizing: border-box;
+                    `;
+                    
+                    if (parity === 0) {
+                        previewDiv.style.clipPath = 'polygon(50% 0%, 0% 100%, 100% 100%)';
+                    } else {
+                        previewDiv.style.clipPath = 'polygon(0% 0%, 100% 0%, 50% 100%)';
+                    }
+                    
+                    grid.appendChild(previewDiv);
+                }
+            }
+            
+            // Draw forbidden cells
+            for (const { row, col, parity } of triForbiddenCells) {
+                const vertices = triBoard.grid.getTriangleVertices(row, col);
+                const gridParity = triBoard.grid.getParity(row, col);
+                
+                // Only render if this cell actually has this parity
+                if (parity !== gridParity) continue;
+                
+                // Calculate bounding box
+                const minX = Math.min(...vertices.map(v => v.x));
+                const maxX = Math.max(...vertices.map(v => v.x));
+                const minY = Math.min(...vertices.map(v => v.y));
+                const maxY = Math.max(...vertices.map(v => v.y));
+                
+                // Position relative to bounds with padding
+                const x = minX - bounds.minX + padding;
+                const y = minY - bounds.minY + padding;
+                const width = maxX - minX;
+                const height = maxY - minY;
+                
+                const forbiddenDiv = document.createElement('div');
+                forbiddenDiv.style.cssText = `
+                    position: absolute;
+                    left: ${x}px;
+                    top: ${y}px;
+                    width: ${width}px;
+                    height: ${height}px;
+                    background: rgba(255, 107, 107, 0.5);
+                    border: 2px solid #ff6b6b;
+                    z-index: 2;
+                    pointer-events: none;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    font-size: 12px;
+                    color: #ff6b6b;
+                    box-sizing: border-box;
+                `;
+                
+                if (parity === 0) {
+                    forbiddenDiv.style.clipPath = 'polygon(50% 0%, 0% 100%, 100% 100%)';
+                } else {
+                    forbiddenDiv.style.clipPath = 'polygon(0% 0%, 100% 0%, 50% 100%)';
+                }
+                
+                grid.appendChild(forbiddenDiv);
+            }
+        }
+        
+        function startTriDrag(e, pieceState) {
+            e.preventDefault();
+            draggedTriPiece = pieceState;
+            
+            // Calculate drag offset
+            const pieceRect = e.target.getBoundingClientRect();
+            dragOffset = {
+                x: e.clientX - pieceRect.left,
+                y: e.clientY - pieceRect.top
+            };
+            
+            // Add visual feedback to all parts of this piece
+            const pieceElements = document.querySelectorAll(`[data-piece-id="${pieceState.id}"]`);
+            pieceElements.forEach(el => {
+                el.style.opacity = '0.7';
+                el.style.transform = 'scale(1.05)';
+                el.style.zIndex = '100';
+            });
+            
+            // Add event listeners
+            document.addEventListener('mousemove', onTriDrag);
+            document.addEventListener('mouseup', stopTriDrag);
+            document.addEventListener('touchmove', onTriTouchDrag);
+            document.addEventListener('touchend', stopTriDrag);
+        }
+        
+        function onTriDrag(e) {
+            if (!draggedTriPiece) return;
+            e.preventDefault();
+            updateTriDragPosition(e.clientX, e.clientY);
+        }
+        
+        function onTriTouchDrag(e) {
+            if (!draggedTriPiece) return;
+            e.preventDefault();
+            updateTriDragPosition(e.touches[0].clientX, e.touches[0].clientY);
+        }
+        
+        function updateTriDragPosition(clientX, clientY) {
+            if (!draggedTriPiece || !triBoard) return;
+            
+            const gridRect = document.getElementById('editorGrid').getBoundingClientRect();
+            const bounds = triBoard.getPixelBounds();
+            const padding = 40;
+            
+            // Calculate position relative to grid
+            const relX = clientX - gridRect.left - dragOffset.x;
+            const relY = clientY - gridRect.top - dragOffset.y;
+            
+            // Convert to board pixel coordinates (accounting for padding)
+            const pixelX = relX - padding + bounds.minX;
+            const pixelY = relY - padding + bounds.minY;
+            
+            // Convert pixel coordinates to grid coordinates
+            const gridPos = triBoard.grid.pixelToGrid(pixelX, pixelY);
+            let newRow = gridPos.row;
+            let newCol = gridPos.col;
+            
+            // Build occupied cells map once
+            const occupiedCells = new Map();
+            for (const pieceState of triPieces) {
+                if (pieceState.id !== draggedTriPiece.id) {
+                    const cells = pieceState.piece.getOccupiedCells(pieceState.row, pieceState.col, pieceState.baseParity || 0);
+                    for (const { row, col, parity } of cells) {
+                        occupiedCells.set(`${row},${col},${parity}`, pieceState.id);
+                    }
+                }
+            }
+            
+            const baseParity = draggedTriPiece.baseParity || 0;
+            
+            // Try the exact position first
+            if (triBoard.contains(newRow, newCol) && 
+                draggedTriPiece.piece.canPlaceAt(newRow, newCol, baseParity, triBoard, occupiedCells, draggedTriPiece.id)) {
+                const pieceCells = draggedTriPiece.piece.getOccupiedCells(newRow, newCol, baseParity);
+                const isForbidden = pieceCells.some(cell => 
+                    triForbiddenCells.some(f => 
+                        f.row === cell.row && f.col === cell.col && f.parity === cell.parity
+                    )
+                );
+                
+                if (!isForbidden) {
+                    draggedTriPiece.row = newRow;
+                    draggedTriPiece.col = newCol;
+                    renderEditorBoard();
+                    return;
+                }
+            }
+            
+            // If exact position doesn't work, try nearby positions (makes dragging more forgiving)
+            const offsets = [
+                [-1, 0], [1, 0], [0, -1], [0, 1],
+                [-1, -1], [-1, 1], [1, -1], [1, 1]
+            ];
+            
+            for (const [dr, dc] of offsets) {
+                const tryRow = newRow + dr;
+                const tryCol = newCol + dc;
+                
+                if (triBoard.contains(tryRow, tryCol) && 
+                    draggedTriPiece.piece.canPlaceAt(tryRow, tryCol, baseParity, triBoard, occupiedCells, draggedTriPiece.id)) {
+                    const pieceCells = draggedTriPiece.piece.getOccupiedCells(tryRow, tryCol, baseParity);
+                    const isForbidden = pieceCells.some(cell => 
+                        triForbiddenCells.some(f => 
+                            f.row === cell.row && f.col === cell.col && f.parity === cell.parity
+                        )
+                    );
+                    
+                    if (!isForbidden) {
+                        draggedTriPiece.row = tryRow;
+                        draggedTriPiece.col = tryCol;
+                        renderEditorBoard();
+                        return;
+                    }
+                }
+            }
+        }
+        
+        function stopTriDrag() {
+            if (!draggedTriPiece) return;
+            
+            // Remove visual feedback
+            const pieceElements = document.querySelectorAll(`[data-piece-id="${draggedTriPiece.id}"]`);
+            pieceElements.forEach(el => {
+                el.style.opacity = '1';
+                el.style.transform = 'scale(1)';
+                el.style.zIndex = '10';
+            });
+            
+            draggedTriPiece = null;
+            dragOffset = null;
+            
+            // Remove event listeners
+            document.removeEventListener('mousemove', onTriDrag);
+            document.removeEventListener('mouseup', stopTriDrag);
+            document.removeEventListener('touchmove', onTriTouchDrag);
+            document.removeEventListener('touchend', stopTriDrag);
+        }
+        
         function startDrag(e, block) {
             e.preventDefault();
             draggedBlock = block;
@@ -2018,9 +3033,18 @@
         }
 
         function clearBoard() {
-            editorState = new KlotskiState([], boardWidth, boardHeight, boardDepth);
-            nextBlockId = 0;
-            forbiddenCells = [];
+            if (isTriangularMode) {
+                // Clear triangular board
+                triPieces = [];
+                triForbiddenCells = [];
+                triDrawingCells = [];
+                nextTriPieceId = 0;
+            } else {
+                // Clear rectangular board
+                editorState = new KlotskiState([], boardWidth, boardHeight, boardDepth);
+                nextBlockId = 0;
+                forbiddenCells = [];
+            }
             renderEditorBoard();
         }
 
@@ -2123,16 +3147,41 @@
         }
 
         function applyCustomBoard() {
-            if (editorState.blocks.length === 0) {
-                alert('Please add at least one piece to the board!');
-                return;
+            if (isTriangularMode) {
+                if (triPieces.length === 0) {
+                    alert('Please add at least one piece to the triangular board!');
+                    return;
+                }
+                
+                // Create triangular state with forbidden cells
+                customStartState = new TriKlotskiState(triPieces, triBoard, triForbiddenCells);
+                
+                console.log('Custom triangular board set!');
+                console.log('  Pieces:', triPieces.length);
+                console.log('  Forbidden cells:', triForbiddenCells.length);
+                console.log('  Board shape:', triBoard.shape);
+                
+                // Close editor and generate graph
+                closeEditor();
+                generateTriangularGraph();
+            } else {
+                if (editorState.blocks.length === 0) {
+                    alert('Please add at least one piece to the board!');
+                    return;
+                }
+                // Create properly dimensioned state (including depth for 3D)
+                customStartState = new KlotskiState(editorState.blocks, boardWidth, boardHeight, boardDepth, forbiddenCells);
+                closeEditor();
+                const dimStr = is3D ? `${boardWidth}×${boardHeight}×${boardDepth}` : `${boardWidth}×${boardHeight}`;
+                console.log(`Custom board set! Size: ${dimStr}, Blocks: ${editorState.blocks.length}, is3D: ${customStartState.is3D}`);
+                console.log('Custom start state:', customStartState);
+                generateGraph();
             }
-            // Create properly dimensioned state (including depth for 3D)
-            customStartState = new KlotskiState(editorState.blocks, boardWidth, boardHeight, boardDepth, forbiddenCells);
-            closeEditor();
-            const dimStr = is3D ? `${boardWidth}×${boardHeight}×${boardDepth}` : `${boardWidth}×${boardHeight}`;
-            console.log(`Custom board set! Size: ${dimStr}, Blocks: ${editorState.blocks.length}, is3D: ${customStartState.is3D}`);
-            console.log('Custom start state:', customStartState);
+        }
+        
+        function generateTriangularGraph() {
+            // Triangular graph generation is now integrated into the main generateGraph() function
+            // Just call it directly - it will detect triangular mode automatically
             generateGraph();
         }
 
@@ -2640,7 +3689,15 @@
 
         // Event listeners
         document.getElementById('generateBtn').addEventListener('click', generateGraph);
-        document.getElementById('editBoardBtn').addEventListener('click', openEditor);
+        document.getElementById('editBoardBtn').addEventListener('click', function() {
+            console.log('Edit Board button clicked');
+            try {
+                openEditor();
+            } catch (error) {
+                console.error('Error in openEditor:', error);
+                alert('Error opening board editor. Check console for details.');
+            }
+        });
         document.getElementById('resetCameraBtn').addEventListener('click', resetCamera);
         document.getElementById('exportCudaBtn').addEventListener('click', exportGraphForCUDA);
         document.getElementById('importCudaBtn').addEventListener('click', importCUDALayout);
@@ -2648,9 +3705,6 @@
         document.getElementById('resetParamsBtn').addEventListener('click', () => {
             resetParameters();
             applyParameters();
-        });
-        document.getElementById('showNodesToggle').addEventListener('change', (e) => {
-            visualizer.setShowAllNodes(e.target.checked);
         });
         
 
@@ -2754,6 +3808,9 @@
             init();
             loadSavedGraph();
         });
+        
+        // Initialize board on page load
+        toggleBoardType();
     </script>
 </body>
 </html>
